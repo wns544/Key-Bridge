@@ -179,7 +179,7 @@
 
                                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Ctrl+`" FontWeight="SemiBold" />
                                 <TextBlock Grid.Row="0" Grid.Column="1" Text="Start / stop bridge" TextWrapping="Wrap" />
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Ctrl+1" FontWeight="SemiBold" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Ctrl+F8" FontWeight="SemiBold" Margin="0,5,0,0" />
                                 <TextBlock Grid.Row="1" Grid.Column="1" Text="Mouse signal on / off" TextWrapping="Wrap" Margin="0,5,0,0" />
                                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Ctrl+Alt+Esc" FontWeight="SemiBold" Margin="0,5,0,0" />
                                 <TextBlock Grid.Row="2" Grid.Column="1" Text="Emergency stop" TextWrapping="Wrap" Margin="0,5,0,0" />

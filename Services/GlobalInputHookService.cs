@@ -31,7 +31,7 @@ public sealed class GlobalInputHookService : IDisposable
     private const int VkRMenu = 0xA5;
     private const int VkLWin = 0x5B;
     private const int VkRWin = 0x5C;
-    private const int Vk1 = 0x31;
+    private const int VkF8 = 0x77;
     private const int VkOem3 = 0xC0;
 
     private readonly LowLevelProc keyboardProc;
@@ -276,7 +276,7 @@ public sealed class GlobalInputHookService : IDisposable
 
     private bool IsMouseSignalToggleChord(int virtualKey)
     {
-        if (virtualKey != Vk1)
+        if (virtualKey != VkF8)
         {
             return false;
         }
