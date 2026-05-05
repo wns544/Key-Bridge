@@ -8,6 +8,9 @@ using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using Microsoft.Win32;
+using Drawing = System.Drawing;
+using Forms = System.Windows.Forms;
 
 namespace KeyboardPadBridge;
 
@@ -59,6 +62,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const double MouseScaleX = 1.0;
     private const double MouseScaleY = 1.0;
     private const int MouseSendIntervalMs = 8;
+    private const string RunRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string RunRegistryName = "KeyBridge";
 
     private readonly IHidBridgeService bridgeService = new BluetoothHidBridgeService();
     private readonly GlobalInputHookService inputHookService = new();
@@ -72,7 +77,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private int pendingMouseDeltaY;
     private bool mouseSendLoopRunning;
     private bool isMouseSignalEnabled;
+    private bool isExitRequested;
+    private bool hasShownTrayTip;
     private byte mouseButtons;
+    private Forms.NotifyIcon? trayIcon;
 
     public MainWindow()
     {
@@ -88,6 +96,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
         UpdatePointerCapture();
         inputHookService.Start();
+        Closing += Window_Closing;
+        StateChanged += Window_StateChanged;
+        InitializeTrayIcon();
+        StartWithWindowsCheckBox.IsChecked = IsStartWithWindowsEnabled();
 
         DataContext = this;
         AddActivity("System", "App is ready.");
@@ -162,15 +174,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         pressedKeys.Clear();
         await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
-        ReleaseLocalModifierKeys();
-        inputHookService.ResetPressedKeyState();
-        ResetMouseState();
-        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0);
-        ReleaseLocalMouseButtons();
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
         inputHookService.SuppressForwardedPointerEvents = false;
         inputHookService.CapturePointerEvents = false;
+        inputHookService.ResetPressedKeyState();
+        ReleaseLocalModifierKeys();
+        ResetMouseState();
+        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0);
+        ReleaseLocalMouseButtons();
         await bridgeService.StopAsync();
 
         AddActivity("Bridge", message);
@@ -205,7 +217,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            Clipboard.SetText(logBuilder.ToString().TrimEnd());
+            System.Windows.Clipboard.SetText(logBuilder.ToString().TrimEnd());
             AddActivity("System", $"{ActivityEvents.Count} log entries copied to clipboard.");
         }
         catch (Exception ex)
@@ -295,6 +307,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         AddActivity("System", isMouseSignalEnabled
             ? "Mouse signal is enabled."
             : "Mouse signal is disabled.");
+    }
+
+    private void StartWithWindowsCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        var shouldStartWithWindows = StartWithWindowsCheckBox.IsChecked == true;
+
+        try
+        {
+            SetStartWithWindows(shouldStartWithWindows);
+            AddActivity("System", shouldStartWithWindows
+                ? "KeyBridge will start with Windows."
+                : "KeyBridge will not start with Windows.");
+        }
+        catch (Exception ex)
+        {
+            AddActivity("System", $"Start with Windows update failed: {ex.Message}");
+            StartWithWindowsCheckBox.IsChecked = !shouldStartWithWindows;
+        }
     }
 
     private void InputHookService_KeyChanged(object? sender, GlobalKeyEventArgs e)
@@ -754,8 +784,119 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             : "Press Ctrl+` or Start Bridge";
     }
 
+    private void InitializeTrayIcon()
+    {
+        var contextMenu = new Forms.ContextMenuStrip();
+        contextMenu.Items.Add("Show KeyBridge", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
+        contextMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitFromTray));
+
+        trayIcon = new Forms.NotifyIcon
+        {
+            Text = "KeyBridge",
+            Icon = LoadTrayIcon(),
+            ContextMenuStrip = contextMenu,
+            Visible = true
+        };
+
+        trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(ShowFromTray);
+    }
+
+    private Drawing.Icon LoadTrayIcon()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "keybridge.ico");
+        if (File.Exists(iconPath))
+        {
+            return new Drawing.Icon(iconPath);
+        }
+
+        return Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? string.Empty)
+            ?? Drawing.SystemIcons.Application;
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            HideToTray();
+        }
+    }
+
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        if (isExitRequested)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        HideToTray();
+    }
+
+    private void HideToTray()
+    {
+        ShowInTaskbar = false;
+        Hide();
+
+        if (hasShownTrayTip || trayIcon is null)
+        {
+            return;
+        }
+
+        trayIcon.ShowBalloonTip(2500, "KeyBridge", "KeyBridge is still running in the tray.", Forms.ToolTipIcon.Info);
+        hasShownTrayTip = true;
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        ShowInTaskbar = true;
+        Activate();
+    }
+
+    private void ExitFromTray()
+    {
+        isExitRequested = true;
+        Close();
+    }
+
+    private static bool IsStartWithWindowsEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunRegistryPath, writable: false);
+        return key?.GetValue(RunRegistryName) is string value
+            && string.Equals(value, GetStartWithWindowsCommand(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SetStartWithWindows(bool enabled)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunRegistryPath, writable: true)
+            ?? Registry.CurrentUser.CreateSubKey(RunRegistryPath, writable: true);
+
+        if (enabled)
+        {
+            key.SetValue(RunRegistryName, GetStartWithWindowsCommand(), RegistryValueKind.String);
+            return;
+        }
+
+        key.DeleteValue(RunRegistryName, throwOnMissingValue: false);
+    }
+
+    private static string GetStartWithWindowsCommand()
+    {
+        var executablePath = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrWhiteSpace(executablePath))
+        {
+            throw new InvalidOperationException("Unable to determine KeyBridge executable path.");
+        }
+
+        return $"\"{executablePath}\"";
+    }
+
     private async void Window_Closed(object? sender, EventArgs e)
     {
+        trayIcon?.Dispose();
+        trayIcon = null;
+
         if (bridgeService.IsRunning)
         {
             await StopBridgeAsync("Bridge stopped because the app closed.");

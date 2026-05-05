@@ -50,6 +50,11 @@ public static class HidKeyboardReport
             return report;
         }
 
+        if (TryCreateWordDeletion(keys, report))
+        {
+            return report;
+        }
+
         if (TryCreateIpadFunctionShortcut(keys, report))
         {
             return report;
@@ -148,6 +153,22 @@ public static class HidKeyboardReport
         var hasShift = keys.Any(key => (GetModifier(key) & (LeftShift | RightShift)) != 0);
         report[0] = (byte)(LeftAlt | (hasShift ? LeftShift : 0x00));
         report[2] = hasLeft ? (byte)0x50 : (byte)0x4F; // iPadOS word navigation: Option+Left/Right.
+        return true;
+    }
+
+    private static bool TryCreateWordDeletion(IReadOnlyCollection<CapturedKey> keys, byte[] report)
+    {
+        var hasControl = keys.Any(key => (GetModifier(key) & (LeftControl | RightControl)) != 0);
+        var hasBackspace = keys.Any(key => GetUsage(key) == 0x2A);
+        var hasDelete = keys.Any(key => GetUsage(key) == 0x4C);
+
+        if (!hasControl || (!hasBackspace && !hasDelete))
+        {
+            return false;
+        }
+
+        report[0] = LeftAlt;
+        report[2] = hasBackspace ? (byte)0x2A : (byte)0x4C; // iPadOS word deletion: Option+Backspace/Delete.
         return true;
     }
 

@@ -73,6 +73,12 @@
                           Margin="0,0,14,0"
                           Checked="MouseSignalCheckBox_Changed"
                           Unchecked="MouseSignalCheckBox_Changed" />
+                <CheckBox x:Name="StartWithWindowsCheckBox"
+                          Content="Start with Windows"
+                          VerticalAlignment="Center"
+                          Margin="0,0,14,0"
+                          Checked="StartWithWindowsCheckBox_Changed"
+                          Unchecked="StartWithWindowsCheckBox_Changed" />
                 <Button x:Name="MouseTestButton"
                         Content="마우스 테스트"
                         Margin="0,0,8,0"
