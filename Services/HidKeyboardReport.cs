@@ -49,7 +49,7 @@ public static class HidKeyboardReport
 
         var modifier = keys.Aggregate((byte)0, (current, key) => (byte)(current | GetModifier(key)));
         var usages = keys
-            .Select(GetUsage)
+            .Select(key => GetUsage(key, modifier))
             .Where(usage => usage != 0)
             .Distinct()
             .Take(6)
@@ -203,6 +203,23 @@ public static class HidKeyboardReport
 
     private static byte GetUsage(CapturedKey capturedKey)
     {
+        return GetUsage(capturedKey, 0);
+    }
+
+    private static byte GetUsage(CapturedKey capturedKey, byte modifier)
+    {
+        if ((modifier & (LeftControl | RightControl | LeftAlt | RightAlt | LeftGui | RightGui | LeftShift | RightShift)) == 0
+            && capturedKey.VirtualKey is >= 0x31 and <= 0x39)
+        {
+            return (byte)(0x59 + capturedKey.VirtualKey - 0x31);
+        }
+
+        if ((modifier & (LeftControl | RightControl | LeftAlt | RightAlt | LeftGui | RightGui | LeftShift | RightShift)) == 0
+            && capturedKey.VirtualKey == 0x30)
+        {
+            return 0x62;
+        }
+
         if (capturedKey.VirtualKey is >= 0x31 and <= 0x39)
         {
             return (byte)(0x1E + capturedKey.VirtualKey - 0x31);
