@@ -40,6 +40,21 @@ public static class HidKeyboardReport
             return report;
         }
 
+        if (TryCreateLineNavigation(keys, report))
+        {
+            return report;
+        }
+
+        if (TryCreateWordNavigation(keys, report))
+        {
+            return report;
+        }
+
+        if (TryCreateIpadFunctionShortcut(keys, report))
+        {
+            return report;
+        }
+
         if (ContainsHangulToggle(keys))
         {
             report[0] = LeftControl;
@@ -101,6 +116,82 @@ public static class HidKeyboardReport
         }
 
         return hasTab || keys.All(key => GetUsage(key) == 0);
+    }
+
+    private static bool TryCreateLineNavigation(IReadOnlyCollection<CapturedKey> keys, byte[] report)
+    {
+        var hasHome = keys.Any(key => GetUsage(key) == 0x4A);
+        var hasEnd = keys.Any(key => GetUsage(key) == 0x4D);
+
+        if (!hasHome && !hasEnd)
+        {
+            return false;
+        }
+
+        var hasShift = keys.Any(key => (GetModifier(key) & (LeftShift | RightShift)) != 0);
+        report[0] = (byte)(LeftGui | (hasShift ? LeftShift : 0x00));
+        report[2] = hasHome ? (byte)0x50 : (byte)0x4F; // iPadOS line start/end: Command+Left/Right.
+        return true;
+    }
+
+    private static bool TryCreateWordNavigation(IReadOnlyCollection<CapturedKey> keys, byte[] report)
+    {
+        var hasControl = keys.Any(key => (GetModifier(key) & (LeftControl | RightControl)) != 0);
+        var hasLeft = keys.Any(key => GetUsage(key) == 0x50);
+        var hasRight = keys.Any(key => GetUsage(key) == 0x4F);
+
+        if (!hasControl || (!hasLeft && !hasRight))
+        {
+            return false;
+        }
+
+        var hasShift = keys.Any(key => (GetModifier(key) & (LeftShift | RightShift)) != 0);
+        report[0] = (byte)(LeftAlt | (hasShift ? LeftShift : 0x00));
+        report[2] = hasLeft ? (byte)0x50 : (byte)0x4F; // iPadOS word navigation: Option+Left/Right.
+        return true;
+    }
+
+    private static bool TryCreateIpadFunctionShortcut(IReadOnlyCollection<CapturedKey> keys, byte[] report)
+    {
+        var hasF1 = keys.Any(key => GetUsage(key) == 0x3A);
+        var hasF9 = keys.Any(key => GetUsage(key) == 0x42);
+        var hasF10 = keys.Any(key => GetUsage(key) == 0x43);
+        var hasF11 = keys.Any(key => GetUsage(key) == 0x44);
+
+        if (!hasF1 && !hasF9 && !hasF10 && !hasF11)
+        {
+            return false;
+        }
+
+        if (hasF1)
+        {
+            report[0] = LeftGui;
+            report[2] = 0x0B; // Command+H: go to Home screen.
+            return true;
+        }
+
+        if (hasF9)
+        {
+            report[0] = LeftGui;
+            report[2] = 0x52; // Command+Up: top of document/page.
+            return true;
+        }
+
+        if (hasF10)
+        {
+            report[0] = LeftGui;
+            report[2] = 0x51; // Command+Down: bottom of document/page.
+            return true;
+        }
+
+        if (hasF11)
+        {
+            report[0] = LeftGui | LeftAlt;
+            report[2] = 0x07; // Command+Option+D: show/hide Dock.
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryCreateKeyBridgeShortcut(IReadOnlyCollection<CapturedKey> keys, byte[] report)

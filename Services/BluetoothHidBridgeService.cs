@@ -97,6 +97,19 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         await NotifyKeyboardReportsAsync(report, "state");
     }
 
+    public async Task SendKeyboardReportAsync(DeviceProfile targetDevice, byte[] report, string description)
+    {
+        if (!IsRunning || inputReportCharacteristic is null)
+        {
+            return;
+        }
+
+        DiagnosticMessage?.Invoke(this, $"Sending keyboard shortcut [{description}].");
+        await NotifyKeyboardReportsAsync(report, "shortcut");
+        await Task.Delay(12);
+        await NotifyKeyboardReportsAsync(HidKeyboardReport.Empty, "shortcut release");
+    }
+
     public async Task SendConsumerControlAsync(DeviceProfile targetDevice, ushort usage)
     {
         if (!IsRunning || consumerControlInputReportCharacteristic is null)

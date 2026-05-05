@@ -362,9 +362,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (TryGetMouseConsumerControlUsage(rawMouseInput.ButtonFlags, out var consumerUsage))
+        if (TryGetMouseNavigationShortcut(rawMouseInput.ButtonFlags, out var shortcutReport, out var shortcutDescription))
         {
-            _ = SendMouseConsumerControlAsync(consumerUsage);
+            _ = SendMouseKeyboardShortcutAsync(shortcutReport, shortcutDescription);
             return;
         }
 
@@ -559,12 +559,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async Task SendMouseConsumerControlAsync(ushort usage)
+    private async Task SendMouseKeyboardShortcutAsync(byte[] report, string description)
     {
         try
         {
-            await bridgeService.SendConsumerControlAsync(activeDevice, usage);
-            await Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"Mouse button -> consumer usage 0x{usage:X4}"));
+            await bridgeService.SendKeyboardReportAsync(activeDevice, report, description);
+            await Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"Mouse button -> {description}"));
         }
         catch (Exception ex)
         {
@@ -692,16 +692,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return (sbyte)Math.Clamp(wheelSteps, sbyte.MinValue, sbyte.MaxValue);
     }
 
-    private static bool TryGetMouseConsumerControlUsage(ushort buttonFlags, out ushort usage)
+    private static bool TryGetMouseNavigationShortcut(ushort buttonFlags, out byte[] report, out string description)
     {
-        usage = buttonFlags switch
-        {
-            var flags when (flags & RawMouseButton4Down) != 0 => ConsumerBrowserBack,
-            var flags when (flags & RawMouseButton5Down) != 0 => ConsumerBrowserForward,
-            _ => 0
-        };
+        const byte leftGui = 0x08;
+        const byte openBracket = 0x2F;
+        const byte closeBracket = 0x30;
 
-        return usage != 0;
+        if ((buttonFlags & RawMouseButton4Down) != 0)
+        {
+            report = new byte[] { leftGui, 0x00, openBracket, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            description = "Command+[ Back";
+            return true;
+        }
+
+        if ((buttonFlags & RawMouseButton5Down) != 0)
+        {
+            report = new byte[] { leftGui, 0x00, closeBracket, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            description = "Command+] Forward";
+            return true;
+        }
+
+        report = Array.Empty<byte>();
+        description = string.Empty;
+        return false;
     }
 
     private void LoadWindowIcon()
