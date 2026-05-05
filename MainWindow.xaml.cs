@@ -326,38 +326,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 pressedKeys.Remove(e.VirtualKey);
             }
 
-            PruneReleasedModifierKeys();
-
             await bridgeService.SendKeyboardStateAsync(activeDevice, pressedKeys.Values.ToList());
             AddActivity("Keyboard", $"{(e.IsDown ? "Down" : "Up")} {e.Key}; held: {HidKeyboardReport.DescribePressedKeys(pressedKeys.Values)}");
         });
-    }
-
-    private void PruneReleasedModifierKeys()
-    {
-        PruneReleasedKey(VkControl, VkLControl, VkRControl);
-        PruneReleasedKey(VkShift, VkLShift, VkRShift);
-        PruneReleasedKey(VkMenu, VkLMenu, VkRMenu);
-        PruneReleasedKey(VkLWin, VkLWin);
-        PruneReleasedKey(VkRWin, VkRWin);
-    }
-
-    private void PruneReleasedKey(params byte[] virtualKeys)
-    {
-        if (virtualKeys.Any(IsVirtualKeyPhysicallyDown))
-        {
-            return;
-        }
-
-        foreach (var virtualKey in virtualKeys)
-        {
-            pressedKeys.Remove(virtualKey);
-        }
-    }
-
-    private static bool IsVirtualKeyPhysicallyDown(byte virtualKey)
-    {
-        return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
     }
 
     protected override void OnSourceInitialized(EventArgs e)

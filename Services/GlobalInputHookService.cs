@@ -286,14 +286,20 @@ public sealed class GlobalInputHookService : IDisposable
 
     private bool IsControlDown()
     {
-        return (GetAsyncKeyState(VkControl) & 0x8000) != 0
+        return downVirtualKeys.Contains(VkControl)
+            || downVirtualKeys.Contains(VkLControl)
+            || downVirtualKeys.Contains(VkRControl)
+            || (GetAsyncKeyState(VkControl) & 0x8000) != 0
             || (GetAsyncKeyState(VkLControl) & 0x8000) != 0
             || (GetAsyncKeyState(VkRControl) & 0x8000) != 0;
     }
 
     private bool IsAltDown()
     {
-        return (GetAsyncKeyState(VkMenu) & 0x8000) != 0
+        return downVirtualKeys.Contains(VkMenu)
+            || downVirtualKeys.Contains(VkLMenu)
+            || downVirtualKeys.Contains(VkRMenu)
+            || (GetAsyncKeyState(VkMenu) & 0x8000) != 0
             || (GetAsyncKeyState(VkLMenu) & 0x8000) != 0
             || (GetAsyncKeyState(VkRMenu) & 0x8000) != 0;
     }
