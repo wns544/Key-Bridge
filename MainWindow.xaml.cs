@@ -91,6 +91,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.EmergencyStopRequested += InputHookService_EmergencyStopRequested;
         inputHookService.BridgeToggleRequested += InputHookService_BridgeToggleRequested;
         inputHookService.MouseSignalToggleRequested += InputHookService_MouseSignalToggleRequested;
+        inputHookService.ClipboardTypingRequested += InputHookService_ClipboardTypingRequested;
         bridgeService.DiagnosticMessage += BridgeService_DiagnosticMessage;
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
@@ -272,6 +273,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             MouseTestButton.IsEnabled = true;
         }
+    }
+
+    private async void TypeClipboardButton_Click(object sender, RoutedEventArgs e)
+    {
+        await TypeClipboardTextAsync();
     }
 
     private void SuppressKeysCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -503,9 +509,73 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         });
     }
 
+    private void InputHookService_ClipboardTypingRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(TypeClipboardTextAsync);
+    }
+
     private void BridgeService_DiagnosticMessage(object? sender, string message)
     {
         Dispatcher.InvokeAsync(() => AddActivity("HID", message));
+    }
+
+    private async Task TypeClipboardTextAsync()
+    {
+        if (!bridgeService.IsRunning)
+        {
+            AddActivity("Clipboard", "Start Bridge first, focus an iPad text field, then type clipboard.");
+            return;
+        }
+
+        if (!System.Windows.Clipboard.ContainsText())
+        {
+            AddActivity("Clipboard", "PC clipboard does not contain text.");
+            return;
+        }
+
+        var text = System.Windows.Clipboard.GetText();
+        if (string.IsNullOrEmpty(text))
+        {
+            AddActivity("Clipboard", "PC clipboard text is empty.");
+            return;
+        }
+
+        pressedKeys.Clear();
+        await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+
+        var typedCount = 0;
+        var skippedCount = 0;
+
+        foreach (var character in text)
+        {
+            if (character == '\r')
+            {
+                continue;
+            }
+
+            if (!HidKeyboardReport.TryCreateTextInputReport(character, out var report))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            await bridgeService.SendKeyboardReportAsync(activeDevice, report, $"clipboard '{DescribeClipboardCharacter(character)}'");
+            typedCount++;
+            await Task.Delay(4);
+        }
+
+        AddActivity("Clipboard", $"Typed {typedCount} clipboard characters to iPad. Skipped unsupported: {skippedCount}.");
+    }
+
+    private static string DescribeClipboardCharacter(char character)
+    {
+        return character switch
+        {
+            '\n' => "\\n",
+            '\t' => "\\t",
+            ' ' => "space",
+            _ => character.ToString()
+        };
     }
 
     private void ResetMouseState()

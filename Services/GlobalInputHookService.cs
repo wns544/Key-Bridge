@@ -32,6 +32,7 @@ public sealed class GlobalInputHookService : IDisposable
     private const int VkLWin = 0x5B;
     private const int VkRWin = 0x5C;
     private const int VkF8 = 0x77;
+    private const int VkV = 0x56;
     private const int VkOem3 = 0xC0;
 
     private readonly LowLevelProc keyboardProc;
@@ -55,6 +56,8 @@ public sealed class GlobalInputHookService : IDisposable
     public event EventHandler? BridgeToggleRequested;
 
     public event EventHandler? MouseSignalToggleRequested;
+
+    public event EventHandler? ClipboardTypingRequested;
 
     public bool IsRunning => keyboardHook != IntPtr.Zero;
 
@@ -171,6 +174,12 @@ public sealed class GlobalInputHookService : IDisposable
                 return 1;
             }
 
+            if (isDown && IsClipboardTypingChord(virtualKey))
+            {
+                ClipboardTypingRequested?.Invoke(this, EventArgs.Empty);
+                return 1;
+            }
+
             if (ShouldSuppressWindowsKeyShortcut(virtualKey))
             {
                 if (!isDown)
@@ -284,6 +293,16 @@ public sealed class GlobalInputHookService : IDisposable
         return IsControlDown() && !IsAltDown();
     }
 
+    private bool IsClipboardTypingChord(int virtualKey)
+    {
+        if (virtualKey != VkV)
+        {
+            return false;
+        }
+
+        return IsControlDown() && !IsAltDown();
+    }
+
     private bool IsControlDown()
     {
         return downVirtualKeys.Contains(VkControl)
@@ -292,6 +311,20 @@ public sealed class GlobalInputHookService : IDisposable
             || (GetAsyncKeyState(VkControl) & 0x8000) != 0
             || (GetAsyncKeyState(VkLControl) & 0x8000) != 0
             || (GetAsyncKeyState(VkRControl) & 0x8000) != 0;
+    }
+
+    private bool IsShiftDown()
+    {
+        const int vkShift = 0x10;
+        const int vkLShift = 0xA0;
+        const int vkRShift = 0xA1;
+
+        return downVirtualKeys.Contains(vkShift)
+            || downVirtualKeys.Contains(vkLShift)
+            || downVirtualKeys.Contains(vkRShift)
+            || (GetAsyncKeyState(vkShift) & 0x8000) != 0
+            || (GetAsyncKeyState(vkLShift) & 0x8000) != 0
+            || (GetAsyncKeyState(vkRShift) & 0x8000) != 0;
     }
 
     private bool IsAltDown()

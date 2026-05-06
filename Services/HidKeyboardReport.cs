@@ -100,6 +100,83 @@ public static class HidKeyboardReport
         return keyNames.Count == 0 ? "none" : string.Join("+", keyNames);
     }
 
+    public static bool TryCreateTextInputReport(char character, out byte[] report)
+    {
+        report = new byte[8];
+
+        if (character is >= 'a' and <= 'z')
+        {
+            report[2] = (byte)(0x04 + character - 'a');
+            return true;
+        }
+
+        if (character is >= 'A' and <= 'Z')
+        {
+            report[0] = LeftShift;
+            report[2] = (byte)(0x04 + character - 'A');
+            return true;
+        }
+
+        if (character is >= '1' and <= '9')
+        {
+            report[2] = (byte)(0x1E + character - '1');
+            return true;
+        }
+
+        if (character == '0')
+        {
+            report[2] = 0x27;
+            return true;
+        }
+
+        return character switch
+        {
+            '\n' => SetTextReport(report, 0x00, 0x28),
+            '\t' => SetTextReport(report, 0x00, 0x2B),
+            ' ' => SetTextReport(report, 0x00, 0x2C),
+            '-' => SetTextReport(report, 0x00, 0x2D),
+            '_' => SetTextReport(report, LeftShift, 0x2D),
+            '=' => SetTextReport(report, 0x00, 0x2E),
+            '+' => SetTextReport(report, LeftShift, 0x2E),
+            '[' => SetTextReport(report, 0x00, 0x2F),
+            '{' => SetTextReport(report, LeftShift, 0x2F),
+            ']' => SetTextReport(report, 0x00, 0x30),
+            '}' => SetTextReport(report, LeftShift, 0x30),
+            '\\' => SetTextReport(report, 0x00, 0x31),
+            '|' => SetTextReport(report, LeftShift, 0x31),
+            ';' => SetTextReport(report, 0x00, 0x33),
+            ':' => SetTextReport(report, LeftShift, 0x33),
+            '\'' => SetTextReport(report, 0x00, 0x34),
+            '"' => SetTextReport(report, LeftShift, 0x34),
+            '`' => SetTextReport(report, 0x00, 0x35),
+            '~' => SetTextReport(report, LeftShift, 0x35),
+            ',' => SetTextReport(report, 0x00, 0x36),
+            '<' => SetTextReport(report, LeftShift, 0x36),
+            '.' => SetTextReport(report, 0x00, 0x37),
+            '>' => SetTextReport(report, LeftShift, 0x37),
+            '/' => SetTextReport(report, 0x00, 0x38),
+            '?' => SetTextReport(report, LeftShift, 0x38),
+            '!' => SetTextReport(report, LeftShift, 0x1E),
+            '@' => SetTextReport(report, LeftShift, 0x1F),
+            '#' => SetTextReport(report, LeftShift, 0x20),
+            '$' => SetTextReport(report, LeftShift, 0x21),
+            '%' => SetTextReport(report, LeftShift, 0x22),
+            '^' => SetTextReport(report, LeftShift, 0x23),
+            '&' => SetTextReport(report, LeftShift, 0x24),
+            '*' => SetTextReport(report, LeftShift, 0x25),
+            '(' => SetTextReport(report, LeftShift, 0x26),
+            ')' => SetTextReport(report, LeftShift, 0x27),
+            _ => false
+        };
+    }
+
+    private static bool SetTextReport(byte[] report, byte modifier, byte usage)
+    {
+        report[0] = modifier;
+        report[2] = usage;
+        return true;
+    }
+
     private static bool TryCreateAltTabAppSwitcher(IReadOnlyCollection<CapturedKey> keys, byte[] report)
     {
         var hasAlt = keys.Any(key => (GetModifier(key) & (LeftAlt | RightAlt)) != 0);
