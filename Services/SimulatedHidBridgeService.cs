@@ -10,6 +10,8 @@ public sealed class SimulatedHidBridgeService : IHidBridgeService
 
     public bool IsRunning { get; private set; }
 
+    public bool HasKeyboardSubscriber => IsRunning;
+
     public Task StartAsync(DeviceProfile targetDevice)
     {
         IsRunning = true;

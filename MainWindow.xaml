@@ -151,7 +151,7 @@
                             <TextBlock Text="Emergency Stop"
                                        Foreground="{StaticResource MutedBrush}"
                                        FontSize="12" />
-                            <TextBlock Text="Ctrl+` toggles, Ctrl+Alt+Esc stops"
+                            <TextBlock Text="Ctrl+CapsLock toggles, Ctrl+Alt+Esc stops"
                                        FontWeight="SemiBold"
                                        Margin="0,3,0,12" />
 
@@ -187,7 +187,7 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Ctrl+`" FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Ctrl+Caps" FontWeight="SemiBold" />
                                 <TextBlock Grid.Row="0" Grid.Column="1" Text="Start / stop bridge" TextWrapping="Wrap" />
                                 <TextBlock Grid.Row="1" Grid.Column="0" Text="Ctrl+F8" FontWeight="SemiBold" Margin="0,5,0,0" />
                                 <TextBlock Grid.Row="1" Grid.Column="1" Text="Mouse signal on / off" TextWrapping="Wrap" Margin="0,5,0,0" />
@@ -310,7 +310,7 @@
                 Margin="0,18,0,0">
             <TextBlock Foreground="{StaticResource WarnBrush}"
                        TextWrapping="Wrap"
-                       Text="Prototype status: BLE HID keyboard/mouse, global input capture, Windows-style shortcut translation, and mouse-signal gating are implemented. Ctrl+` starts/stops KeyBridge; Ctrl+Alt+Esc is backup stop." />
+                       Text="Prototype status: BLE HID keyboard/mouse, global input capture, Windows-style shortcut translation, and mouse-signal gating are implemented. Ctrl+CapsLock starts/stops KeyBridge; Ctrl+Alt+Esc is backup stop." />
         </Border>
     </Grid>
 </Window>

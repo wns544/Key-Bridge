@@ -9,6 +9,8 @@ public interface IHidBridgeService
 
     bool IsRunning { get; }
 
+    bool HasKeyboardSubscriber { get; }
+
     Task StartAsync(DeviceProfile targetDevice);
 
     Task StopAsync();

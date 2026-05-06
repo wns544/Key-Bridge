@@ -31,10 +31,13 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
     private GattLocalCharacteristic? mouseInputReportCharacteristic;
     private GattLocalCharacteristic? bootMouseInputReportCharacteristic;
     private GattLocalCharacteristic? consumerControlInputReportCharacteristic;
+    private volatile bool hasKeyboardSubscriber;
 
     public event EventHandler<string>? DiagnosticMessage;
 
     public bool IsRunning { get; private set; }
+
+    public bool HasKeyboardSubscriber => hasKeyboardSubscriber;
 
     public async Task StartAsync(DeviceProfile targetDevice)
     {
@@ -66,6 +69,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             mouseInputReportCharacteristic = null;
             bootMouseInputReportCharacteristic = null;
             consumerControlInputReportCharacteristic = null;
+            hasKeyboardSubscriber = false;
             DiagnosticMessage?.Invoke(this, "BLE HID advertising stopped.");
         }
 
@@ -178,38 +182,62 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
         inputReportCharacteristic.SubscribedClientsChanged += (_, _) =>
         {
+            var subscriberCount = GetSubscribedClientCount(inputReportCharacteristic, "input report");
+            hasKeyboardSubscriber = subscriberCount > 0;
             DiagnosticMessage?.Invoke(
                 this,
-                $"Input report subscribers: {inputReportCharacteristic.SubscribedClients.Count}.");
+                $"Input report subscribers: {subscriberCount}.");
         };
 
         bootKeyboardInputReportCharacteristic.SubscribedClientsChanged += (_, _) =>
         {
+            var subscriberCount = GetSubscribedClientCount(bootKeyboardInputReportCharacteristic, "boot keyboard");
             DiagnosticMessage?.Invoke(
                 this,
-                $"Boot keyboard subscribers: {bootKeyboardInputReportCharacteristic.SubscribedClients.Count}.");
+                $"Boot keyboard subscribers: {subscriberCount}.");
         };
 
         mouseInputReportCharacteristic.SubscribedClientsChanged += (_, _) =>
         {
+            var subscriberCount = GetSubscribedClientCount(mouseInputReportCharacteristic, "mouse input");
             DiagnosticMessage?.Invoke(
                 this,
-                $"Mouse input subscribers: {mouseInputReportCharacteristic.SubscribedClients.Count}.");
+                $"Mouse input subscribers: {subscriberCount}.");
         };
 
         bootMouseInputReportCharacteristic.SubscribedClientsChanged += (_, _) =>
         {
+            var subscriberCount = GetSubscribedClientCount(bootMouseInputReportCharacteristic, "boot mouse");
             DiagnosticMessage?.Invoke(
                 this,
-                $"Boot mouse subscribers: {bootMouseInputReportCharacteristic.SubscribedClients.Count}.");
+                $"Boot mouse subscribers: {subscriberCount}.");
         };
 
         consumerControlInputReportCharacteristic.SubscribedClientsChanged += (_, _) =>
         {
+            var subscriberCount = GetSubscribedClientCount(consumerControlInputReportCharacteristic, "consumer control");
             DiagnosticMessage?.Invoke(
                 this,
-                $"Consumer control subscribers: {consumerControlInputReportCharacteristic.SubscribedClients.Count}.");
+                $"Consumer control subscribers: {subscriberCount}.");
         };
+    }
+
+    private int GetSubscribedClientCount(GattLocalCharacteristic? characteristic, string name)
+    {
+        if (characteristic is null)
+        {
+            return 0;
+        }
+
+        try
+        {
+            return characteristic.SubscribedClients.Count;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticMessage?.Invoke(this, $"Unable to read {name} subscribers: {ex.Message}");
+            return 0;
+        }
     }
 
     private async Task CreateReadCharacteristicAsync(ushort shortUuid, string name, byte[] value)

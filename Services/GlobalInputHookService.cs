@@ -33,7 +33,7 @@ public sealed class GlobalInputHookService : IDisposable
     private const int VkRWin = 0x5C;
     private const int VkF8 = 0x77;
     private const int VkV = 0x56;
-    private const int VkOem3 = 0xC0;
+    private const int VkCapital = 0x14;
 
     private readonly LowLevelProc keyboardProc;
     private readonly LowLevelProc mouseProc;
@@ -65,7 +65,11 @@ public sealed class GlobalInputHookService : IDisposable
 
     public bool AlwaysSuppressWindowsKeyShortcuts { get; set; }
 
+    public bool EnableClipboardTypingShortcut { get; set; }
+
     public bool SuppressForwardedPointerEvents { get; set; }
+
+    public Func<bool>? ShouldCaptureForwardedInput { get; set; }
 
     public bool CapturePointerEvents
     {
@@ -174,7 +178,7 @@ public sealed class GlobalInputHookService : IDisposable
                 return 1;
             }
 
-            if (isDown && IsClipboardTypingChord(virtualKey))
+            if (EnableClipboardTypingShortcut && ShouldCaptureInput() && isDown && IsClipboardTypingChord(virtualKey))
             {
                 ClipboardTypingRequested?.Invoke(this, EventArgs.Empty);
                 return 1;
@@ -198,7 +202,7 @@ public sealed class GlobalInputHookService : IDisposable
                 downVirtualKeys.Remove(virtualKey);
             }
 
-            if (SuppressForwardedKeys)
+            if (SuppressForwardedKeys && ShouldCaptureInput())
             {
                 return 1;
             }
@@ -217,7 +221,7 @@ public sealed class GlobalInputHookService : IDisposable
 
     private bool ShouldSuppressWindowsKeyShortcut(int virtualKey)
     {
-        if (!AlwaysSuppressWindowsKeyShortcuts)
+        if (!AlwaysSuppressWindowsKeyShortcuts || !ShouldCaptureInput())
         {
             return false;
         }
@@ -239,7 +243,7 @@ public sealed class GlobalInputHookService : IDisposable
             var hookInfo = Marshal.PtrToStructure<MouseLlHookStruct>(lParam);
             PointerMoved?.Invoke(this, new GlobalPointerEventArgs(hookInfo.Point.X, hookInfo.Point.Y, wParam, hookInfo.MouseData));
 
-            if (SuppressForwardedPointerEvents)
+            if (SuppressForwardedPointerEvents && ShouldCaptureInput())
             {
                 return 1;
             }
@@ -273,9 +277,21 @@ public sealed class GlobalInputHookService : IDisposable
         return IsControlDown() && IsAltDown();
     }
 
+    private bool ShouldCaptureInput()
+    {
+        try
+        {
+            return ShouldCaptureForwardedInput?.Invoke() ?? true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private bool IsBridgeToggleChord(int virtualKey)
     {
-        if (virtualKey != VkOem3)
+        if (virtualKey != VkCapital)
         {
             return false;
         }

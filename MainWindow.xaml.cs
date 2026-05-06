@@ -68,7 +68,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IHidBridgeService bridgeService = new BluetoothHidBridgeService();
     private readonly GlobalInputHookService inputHookService = new();
     private readonly BluetoothCapabilityProbe bluetoothCapabilityProbe = new();
-    private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Ctrl+`");
+    private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Ctrl+CapsLock");
     private readonly Dictionary<int, CapturedKey> pressedKeys = [];
     private readonly object mouseStateLock = new();
     private DateTime lastPointerEvent = DateTime.MinValue;
@@ -95,6 +95,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         bridgeService.DiagnosticMessage += BridgeService_DiagnosticMessage;
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
+        inputHookService.ShouldCaptureForwardedInput = () => bridgeService.IsRunning && bridgeService.HasKeyboardSubscriber;
         UpdatePointerCapture();
         inputHookService.Start();
         Closing += Window_Closing;
@@ -104,7 +105,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         DataContext = this;
         AddActivity("System", "App is ready.");
-        AddActivity("System", "Press Ctrl+` to start or stop the bridge.");
+        AddActivity("System", "Press Ctrl+CapsLock to start or stop the bridge.");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -154,6 +155,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReleaseLocalMouseButtons();
             inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
             inputHookService.AlwaysSuppressWindowsKeyShortcuts = true;
+            inputHookService.EnableClipboardTypingShortcut = true;
             inputHookService.SuppressForwardedPointerEvents = isMouseSignalEnabled;
             UpdatePointerCapture();
 
@@ -177,6 +179,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
+        inputHookService.EnableClipboardTypingShortcut = false;
         inputHookService.SuppressForwardedPointerEvents = false;
         inputHookService.CapturePointerEvents = false;
         inputHookService.ResetPressedKeyState();
@@ -485,7 +488,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (bridgeService.IsRunning)
             {
-                await StopBridgeAsync("Bridge stopped by Ctrl+`.");
+                await StopBridgeAsync("Bridge stopped by Ctrl+CapsLock.");
             }
             else
             {
@@ -874,7 +877,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         MouseSignalSummaryText.Text = isMouseSignalEnabled ? "On" : "Off";
         RemoteDeviceText.Text = bridgeService.IsRunning
             ? "Look for Accessory first; after pairing, the name may change to this PC"
-                            : "Press Ctrl+` or Start Bridge";
+                            : "Press Ctrl+CapsLock or Start Bridge";
     }
 
     private void InitializeTrayIcon()
