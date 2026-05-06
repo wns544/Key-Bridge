@@ -38,6 +38,7 @@ public sealed class GlobalInputHookService : IDisposable
     private readonly LowLevelProc keyboardProc;
     private readonly LowLevelProc mouseProc;
     private readonly HashSet<int> downVirtualKeys = [];
+    private readonly HashSet<int> suppressedChordKeyUps = [];
     private IntPtr keyboardHook;
     private IntPtr mouseHook;
 
@@ -124,6 +125,7 @@ public sealed class GlobalInputHookService : IDisposable
     public void ResetPressedKeyState()
     {
         downVirtualKeys.Clear();
+        suppressedChordKeyUps.Clear();
     }
 
     private void StartMouseHook()
@@ -160,6 +162,12 @@ public sealed class GlobalInputHookService : IDisposable
                 downVirtualKeys.Add(virtualKey);
             }
 
+            if (!isDown && suppressedChordKeyUps.Remove(virtualKey))
+            {
+                downVirtualKeys.Remove(virtualKey);
+                return 1;
+            }
+
             if (isDown && IsEmergencyStopChord(virtualKey))
             {
                 EmergencyStopRequested?.Invoke(this, EventArgs.Empty);
@@ -168,18 +176,21 @@ public sealed class GlobalInputHookService : IDisposable
 
             if (isDown && IsBridgeToggleChord(virtualKey))
             {
+                suppressedChordKeyUps.Add(virtualKey);
                 BridgeToggleRequested?.Invoke(this, EventArgs.Empty);
                 return 1;
             }
 
             if (isDown && IsMouseSignalToggleChord(virtualKey))
             {
+                suppressedChordKeyUps.Add(virtualKey);
                 MouseSignalToggleRequested?.Invoke(this, EventArgs.Empty);
                 return 1;
             }
 
             if (EnableClipboardTypingShortcut && ShouldCaptureInput() && isDown && IsClipboardTypingChord(virtualKey))
             {
+                suppressedChordKeyUps.Add(virtualKey);
                 ClipboardTypingRequested?.Invoke(this, EventArgs.Empty);
                 return 1;
             }

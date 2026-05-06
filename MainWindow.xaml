@@ -23,7 +23,7 @@
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
-            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
+            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Malgun Gothic, Segoe UI" />
         </Style>
 
         <Style TargetType="Button">
@@ -60,27 +60,27 @@
         <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,22">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <CheckBox x:Name="SuppressKeysCheckBox"
-                          Content="Block local keystrokes"
+                          Content="노트북 입력 차단"
                           IsChecked="True"
                           VerticalAlignment="Center"
                           Margin="0,0,14,0"
                           Checked="SuppressKeysCheckBox_Changed"
                           Unchecked="SuppressKeysCheckBox_Changed" />
                 <CheckBox x:Name="MouseSignalCheckBox"
-                          Content="Mouse signal"
+                          Content="마우스 전송"
                           IsChecked="False"
                           VerticalAlignment="Center"
                           Margin="0,0,14,0"
                           Checked="MouseSignalCheckBox_Changed"
                           Unchecked="MouseSignalCheckBox_Changed" />
                 <CheckBox x:Name="StartWithWindowsCheckBox"
-                          Content="Start with Windows"
+                          Content="윈도우 시작 시 실행"
                           VerticalAlignment="Center"
                           Margin="0,0,14,0"
                           Checked="StartWithWindowsCheckBox_Changed"
                           Unchecked="StartWithWindowsCheckBox_Changed" />
                 <Button x:Name="TypeClipboardButton"
-                        Content="Type Clipboard"
+                        Content="클립보드 입력"
                         Margin="0,0,8,0"
                         Click="TypeClipboardButton_Click" />
                 <Button x:Name="MouseTestButton"
@@ -88,7 +88,7 @@
                         Margin="0,0,8,0"
                         Click="MouseTestButton_Click" />
                 <Button x:Name="ProbeButton"
-                        Content="Run Probe"
+                        Content="진단 실행"
                         Margin="0,0,8,0"
                         Click="ProbeButton_Click" />
                 <Button x:Name="AdvertiseButton"
@@ -97,14 +97,14 @@
                         Click="AdvertiseButton_Click" />
                 <Button x:Name="BridgeToggleButton"
                         Style="{StaticResource PrimaryButton}"
-                        Content="Start Bridge"
+                        Content="브릿지 시작"
                         Click="BridgeToggleButton_Click" />
             </StackPanel>
             <StackPanel>
                 <TextBlock Text="KeyBridge"
                            FontSize="30"
                            FontWeight="SemiBold" />
-                <TextBlock Text="PC keyboard bridge for iPad and tablet input"
+                <TextBlock Text="노트북 키보드와 마우스를 iPad로 보내는 브릿지"
                            Foreground="{StaticResource MutedBrush}"
                            Margin="0,4,0,0" />
             </StackPanel>
@@ -118,10 +118,10 @@
 
             <Border Grid.Column="0" Style="{StaticResource PanelBorder}" Padding="18" Margin="0,0,18,0">
                 <StackPanel>
-                    <TextBlock Text="BLE HID Session"
+                    <TextBlock Text="블루투스 HID 세션"
                                FontSize="18"
                                FontWeight="SemiBold" />
-                            <TextBlock Text="On iPad, KeyBridge may first appear as Accessory. After pairing, it may change to this PC's Bluetooth device name."
+                    <TextBlock Text="iPad에서는 처음에 '액세서리'로 보일 수 있고, 연결 후 이 PC의 블루투스 이름으로 바뀔 수 있습니다."
                                TextWrapping="Wrap"
                                Foreground="{StaticResource MutedBrush}"
                                Margin="0,4,0,18" />
@@ -132,45 +132,45 @@
                             BorderThickness="1"
                             CornerRadius="8">
                         <StackPanel>
-                            <TextBlock Text="Advertised Role"
+                            <TextBlock Text="전송 역할"
                                        Foreground="{StaticResource MutedBrush}"
                                        FontSize="12" />
-                            <TextBlock Text="BLE HID Keyboard + Mouse"
+                            <TextBlock Text="BLE HID 키보드 + 마우스"
                                        FontWeight="SemiBold"
                                        Margin="0,3,0,12" />
 
-                            <TextBlock Text="Remote Device"
+                            <TextBlock Text="연결 대상"
                                        Foreground="{StaticResource MutedBrush}"
                                        FontSize="12" />
                             <TextBlock x:Name="RemoteDeviceText"
-                                       Text="Waiting for iPad/phone pairing"
+                                       Text="iPad/휴대폰 연결 대기 중"
                                        TextWrapping="Wrap"
                                        FontWeight="SemiBold"
                                        Margin="0,3,0,12" />
 
-                            <TextBlock Text="Emergency Stop"
+                            <TextBlock Text="긴급 중지"
                                        Foreground="{StaticResource MutedBrush}"
                                        FontSize="12" />
-                            <TextBlock Text="Ctrl+CapsLock toggles, Ctrl+Alt+Esc stops"
+                            <TextBlock Text="Ctrl+CapsLock: 시작/중지, Ctrl+Alt+Esc: 긴급 중지"
                                        FontWeight="SemiBold"
                                        Margin="0,3,0,12" />
 
-                            <TextBlock Text="Local Safety"
+                            <TextBlock Text="로컬 안전"
                                        Foreground="{StaticResource MutedBrush}"
                                        FontSize="12" />
-                            <TextBlock Text="Use Windows-style Ctrl shortcuts"
+                            <TextBlock Text="윈도우식 Ctrl 단축키 사용"
                                        FontWeight="SemiBold"
                                        Margin="0,3,0,12" />
 
-                            <TextBlock Text="Mouse"
+                            <TextBlock Text="마우스"
                                        Foreground="{StaticResource MutedBrush}"
                                        FontSize="12" />
                             <TextBlock x:Name="MouseSignalSummaryText"
-                                       Text="Off"
+                                       Text="꺼짐"
                                        FontWeight="SemiBold"
                                        Margin="0,3,0,12" />
 
-                            <TextBlock Text="Shortcuts"
+                            <TextBlock Text="단축키"
                                        Foreground="{StaticResource MutedBrush}"
                                        FontSize="12" />
                             <Grid Margin="0,6,0,0">
@@ -188,17 +188,17 @@
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Ctrl+Caps" FontWeight="SemiBold" />
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="Start / stop bridge" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="브릿지 시작/중지" TextWrapping="Wrap" />
                                 <TextBlock Grid.Row="1" Grid.Column="0" Text="Ctrl+F8" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="Mouse signal on / off" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="마우스 전송 켜기/끄기" TextWrapping="Wrap" Margin="0,5,0,0" />
                                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Ctrl+Alt+Esc" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="Emergency stop" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="긴급 중지" TextWrapping="Wrap" Margin="0,5,0,0" />
                                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Alt+Tab" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="Switch apps on iPad" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="iPad 앱 전환" TextWrapping="Wrap" Margin="0,5,0,0" />
                                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Ctrl+A/C/V" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="Windows-style shortcuts" TextWrapping="Wrap" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Han/Eng" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="Input language switch" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="윈도우식 단축키" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="한/영" FontWeight="SemiBold" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="입력 언어 전환" TextWrapping="Wrap" Margin="0,5,0,0" />
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -220,26 +220,26 @@
 
                         <StackPanel>
                             <TextBlock x:Name="ActiveDeviceNameText"
-                                       Text="BLE HID Keyboard + Mouse"
+                                       Text="BLE HID 키보드 + 마우스"
                                        FontSize="24"
                                        FontWeight="SemiBold" />
                             <TextBlock x:Name="StatusText"
-                                       Text="Idle"
+                                       Text="대기 중"
                                        Foreground="{StaticResource MutedBrush}"
                                        Margin="0,4,0,0" />
                         </StackPanel>
 
                         <UniformGrid Grid.Column="1" Columns="3" VerticalAlignment="Center">
                             <StackPanel Margin="18,0,0,0">
-                                <TextBlock Text="Keyboard" Foreground="{StaticResource MutedBrush}" FontSize="12" />
-                                <TextBlock x:Name="KeyboardStateText" Text="Ready" FontWeight="SemiBold" />
+                                <TextBlock Text="키보드" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                                <TextBlock x:Name="KeyboardStateText" Text="준비됨" FontWeight="SemiBold" />
                             </StackPanel>
                             <StackPanel Margin="18,0,0,0">
-                                <TextBlock Text="Pointer" Foreground="{StaticResource MutedBrush}" FontSize="12" />
-                                <TextBlock x:Name="MouseStateText" Text="Ready" FontWeight="SemiBold" />
+                                <TextBlock Text="마우스" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                                <TextBlock x:Name="MouseStateText" Text="준비됨" FontWeight="SemiBold" />
                             </StackPanel>
                             <StackPanel Margin="18,0,0,0">
-                                <TextBlock Text="Backend" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                                <TextBlock Text="백엔드" Foreground="{StaticResource MutedBrush}" FontSize="12" />
                                 <TextBlock x:Name="BackendStateText" Text="BLE HID" FontWeight="SemiBold" />
                             </StackPanel>
                         </UniformGrid>
@@ -256,17 +256,17 @@
                         <DockPanel Grid.Row="0" Margin="0,0,0,14">
                             <StackPanel DockPanel.Dock="Right"
                                         Orientation="Horizontal">
-                                <Button Content="Copy Logs"
+                                <Button Content="로그 복사"
                                         Margin="0,0,8,0"
                                         Click="CopyLogsButton_Click" />
-                                <Button Content="Clear Log"
+                                <Button Content="로그 지우기"
                                         Click="ClearLogButton_Click" />
                             </StackPanel>
                             <StackPanel>
-                                <TextBlock Text="Input Events"
+                                <TextBlock Text="입력 로그"
                                            FontSize="18"
                                            FontWeight="SemiBold" />
-                                <TextBlock Text="Start the bridge, then use any app. Ctrl+Alt+Esc stops capture immediately."
+                                <TextBlock Text="브릿지를 시작한 뒤 iPad에서 입력할 앱을 열어 사용하세요. Ctrl+Alt+Esc는 즉시 중지합니다."
                                            Foreground="{StaticResource MutedBrush}"
                                            Margin="0,4,0,0" />
                             </StackPanel>
@@ -310,7 +310,7 @@
                 Margin="0,18,0,0">
             <TextBlock Foreground="{StaticResource WarnBrush}"
                        TextWrapping="Wrap"
-                       Text="Prototype status: BLE HID keyboard/mouse, global input capture, Windows-style shortcut translation, and mouse-signal gating are implemented. Ctrl+CapsLock starts/stops KeyBridge; Ctrl+Alt+Esc is backup stop." />
+                       Text="현재 상태: BLE HID 키보드/마우스, 전역 입력 캡처, 윈도우식 단축키 변환, 마우스 전송 제어가 구현되어 있습니다. Ctrl+CapsLock으로 시작/중지하고, Ctrl+Alt+Esc로 긴급 중지합니다." />
         </Border>
     </Grid>
 </Window>

@@ -81,6 +81,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool hasShownTrayTip;
     private byte mouseButtons;
     private Forms.NotifyIcon? trayIcon;
+    private BridgeStatusToastWindow? bridgeStatusToast;
 
     public MainWindow()
     {
@@ -104,8 +105,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StartWithWindowsCheckBox.IsChecked = IsStartWithWindowsEnabled();
 
         DataContext = this;
-        AddActivity("System", "App is ready.");
-        AddActivity("System", "Press Ctrl+CapsLock to start or stop the bridge.");
+        AddActivity("시스템", "앱이 준비되었습니다.");
+        AddActivity("시스템", "Ctrl+CapsLock으로 브릿지를 시작하거나 중지할 수 있습니다.");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -115,7 +116,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (bridgeService.IsRunning)
         {
-            await StopBridgeAsync("Bridge stopped.");
+            await StopBridgeAsync("브릿지를 중지했습니다.");
             return;
         }
 
@@ -128,16 +129,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            AddActivity("Bridge", "Restarting discovery so iPad can find this PC again.");
+            AddActivity("브릿지", "iPad가 이 PC를 다시 찾을 수 있도록 검색을 재시작합니다.");
 
             if (bridgeService.IsRunning)
             {
-                await StopBridgeAsync("Previous BLE HID session stopped before discovery refresh.");
+                await StopBridgeAsync("기기 다시 찾기를 위해 기존 BLE HID 세션을 중지했습니다.");
                 await Task.Delay(350);
             }
 
             await StartBridgeAsync();
-            AddActivity("Bridge", "Discovery is ready. On iPad, look for Accessory first; after pairing, it may rename to this PC's Bluetooth device name.");
+            AddActivity("브릿지", "검색 준비가 끝났습니다. iPad에서는 먼저 '액세서리'를 찾고, 연결 후 이 PC의 블루투스 이름으로 바뀔 수 있습니다.");
         }
         finally
         {
@@ -160,15 +161,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             UpdatePointerCapture();
 
             BackendStateText.Text = "BLE HID";
-            RemoteDeviceText.Text = "Look for Accessory first; after pairing, the name may change to this PC";
-            AddActivity("Bridge", "BLE HID discovery started. On iPad, choose Accessory first; after pairing, the name may change to this PC's Bluetooth device name.");
+            RemoteDeviceText.Text = "먼저 '액세서리'를 찾으세요. 연결 후 이 PC 이름으로 바뀔 수 있습니다.";
+            AddActivity("브릿지", "BLE HID 검색을 시작했습니다. iPad에서 먼저 '액세서리'를 선택하세요. 연결 후 이 PC의 블루투스 이름으로 바뀔 수 있습니다.");
             RefreshStatus();
+            ShowBridgeStatusToast("Key Bridge", "iPad", true);
         }
         catch (Exception ex)
         {
             await bridgeService.StopAsync();
-            AddActivity("Bridge", $"{ex.GetType().Name}: {ex.Message}");
-            BackendStateText.Text = "BLE HID failed";
+            AddActivity("브릿지", $"{ex.GetType().Name}: {ex.Message}");
+            BackendStateText.Text = "BLE HID 실패";
             RefreshStatus();
         }
     }
@@ -189,21 +191,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ReleaseLocalMouseButtons();
         await bridgeService.StopAsync();
 
-        AddActivity("Bridge", message);
+        AddActivity("브릿지", message);
         RefreshStatus();
+        ShowBridgeStatusToast("Key Bridge", "iPad", false);
     }
 
     private void ClearLogButton_Click(object sender, RoutedEventArgs e)
     {
         ActivityEvents.Clear();
-        AddActivity("System", "Log cleared.");
+        AddActivity("시스템", "로그를 지웠습니다.");
     }
 
     private void CopyLogsButton_Click(object sender, RoutedEventArgs e)
     {
         if (ActivityEvents.Count == 0)
         {
-            AddActivity("System", "No logs to copy.");
+            AddActivity("시스템", "복사할 로그가 없습니다.");
             return;
         }
 
@@ -222,18 +225,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             System.Windows.Clipboard.SetText(logBuilder.ToString().TrimEnd());
-            AddActivity("System", $"{ActivityEvents.Count} log entries copied to clipboard.");
+            AddActivity("시스템", $"로그 {ActivityEvents.Count}개를 클립보드에 복사했습니다.");
         }
         catch (Exception ex)
         {
-            AddActivity("System", $"Clipboard copy failed: {ex.Message}");
+            AddActivity("시스템", $"클립보드 복사 실패: {ex.Message}");
         }
     }
 
     private async void ProbeButton_Click(object sender, RoutedEventArgs e)
     {
         ProbeButton.IsEnabled = false;
-        AddActivity("Probe", "Bluetooth capability probe started.");
+        AddActivity("진단", "블루투스 기능 진단을 시작했습니다.");
 
         try
         {
@@ -247,8 +250,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            BackendStateText.Text = "Probe failed";
-            AddActivity("Probe", $"{ex.GetType().Name}: {ex.Message}");
+            BackendStateText.Text = "진단 실패";
+            AddActivity("진단", $"{ex.GetType().Name}: {ex.Message}");
         }
         finally
         {
@@ -264,13 +267,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (!bridgeService.IsRunning)
             {
-                AddActivity("Pointer", "Start Bridge first, pair the iPad, then run mouse test.");
+                AddActivity("마우스", "먼저 브릿지를 시작하고 iPad와 연결한 뒤 마우스 테스트를 실행하세요.");
                 return;
             }
 
-            AddActivity("Pointer", "Mouse test started. The iPad cursor should move in a small square.");
+            AddActivity("마우스", "마우스 테스트를 시작했습니다. iPad 커서가 작은 사각형으로 움직여야 합니다.");
             await SendMouseTestPatternAsync();
-            AddActivity("Pointer", "Mouse test finished.");
+            AddActivity("마우스", "마우스 테스트를 마쳤습니다.");
         }
         finally
         {
@@ -287,8 +290,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
         AddActivity("System", inputHookService.SuppressForwardedKeys
-            ? "Local keystrokes will be blocked while capturing."
-            : "Local keystrokes will pass through while capturing.");
+            ? "브릿지 사용 중 노트북 입력을 차단합니다."
+            : "브릿지 사용 중에도 노트북 입력을 통과시킵니다.");
     }
 
     private async void MouseSignalCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -309,13 +312,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReleaseLocalMouseButtons();
         }
 
-        MouseSignalSummaryText.Text = isMouseSignalEnabled ? "On" : "Off";
+        MouseSignalSummaryText.Text = isMouseSignalEnabled ? "켜짐" : "꺼짐";
         MouseStateText.Text = bridgeService.IsRunning
-            ? isMouseSignalEnabled ? "Capturing" : "Off"
-            : "Ready";
-        AddActivity("System", isMouseSignalEnabled
-            ? "Mouse signal is enabled."
-            : "Mouse signal is disabled.");
+            ? isMouseSignalEnabled ? "전송 중" : "꺼짐"
+            : "준비됨";
+        AddActivity("시스템", isMouseSignalEnabled
+            ? "마우스 전송을 켰습니다."
+            : "마우스 전송을 껐습니다.");
+
+        if (IsLoaded)
+        {
+            ShowBridgeStatusToast("Mouse", "Mouse", isMouseSignalEnabled);
+        }
     }
 
     private void StartWithWindowsCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -325,13 +333,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             SetStartWithWindows(shouldStartWithWindows);
-            AddActivity("System", shouldStartWithWindows
-                ? "KeyBridge will start with Windows."
-                : "KeyBridge will not start with Windows.");
+            AddActivity("시스템", shouldStartWithWindows
+                ? "KeyBridge를 윈도우 시작 시 자동 실행합니다."
+                : "KeyBridge를 윈도우 시작 시 자동 실행하지 않습니다.");
         }
         catch (Exception ex)
         {
-            AddActivity("System", $"Start with Windows update failed: {ex.Message}");
+            AddActivity("시스템", $"자동 실행 설정 변경 실패: {ex.Message}");
             StartWithWindowsCheckBox.IsChecked = !shouldStartWithWindows;
         }
     }
@@ -350,7 +358,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 if (e.IsDown)
                 {
                     await bridgeService.SendConsumerControlAsync(activeDevice, consumerUsage);
-                    AddActivity("Keyboard", $"{e.Key} -> consumer usage 0x{consumerUsage:X4}");
+                    AddActivity("키보드", $"{e.Key} -> 소비자 제어 0x{consumerUsage:X4}");
                 }
 
                 return;
@@ -364,7 +372,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 {
                     await bridgeService.SendKeyboardStateAsync(activeDevice, new[] { e.CapturedKey });
                     await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
-                    AddActivity("Keyboard", $"{e.Key} -> one-shot toggle");
+                    AddActivity("키보드", $"{e.Key} -> 언어 전환");
                 }
 
                 return;
@@ -380,7 +388,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             await bridgeService.SendKeyboardStateAsync(activeDevice, pressedKeys.Values.ToList());
-            AddActivity("Keyboard", $"{(e.IsDown ? "Down" : "Up")} {e.Key}; held: {HidKeyboardReport.DescribePressedKeys(pressedKeys.Values)}");
+            AddActivity("키보드", $"{(e.IsDown ? "누름" : "뗌")} {e.Key}; 유지 중: {HidKeyboardReport.DescribePressedKeys(pressedKeys.Values)}");
         });
     }
 
@@ -479,7 +487,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void InputHookService_EmergencyStopRequested(object? sender, EventArgs e)
     {
-        Dispatcher.InvokeAsync(async () => await StopBridgeAsync("Emergency stop: Ctrl+Alt+Esc."));
+        Dispatcher.InvokeAsync(async () => await StopBridgeAsync("긴급 중지: Ctrl+Alt+Esc."));
     }
 
     private void InputHookService_BridgeToggleRequested(object? sender, EventArgs e)
@@ -488,7 +496,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (bridgeService.IsRunning)
             {
-                await StopBridgeAsync("Bridge stopped by Ctrl+CapsLock.");
+                await StopBridgeAsync("Ctrl+CapsLock으로 브릿지를 중지했습니다.");
             }
             else
             {
@@ -526,20 +534,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (!bridgeService.IsRunning)
         {
-            AddActivity("Clipboard", "Start Bridge first, focus an iPad text field, then type clipboard.");
+            AddActivity("클립보드", "먼저 브릿지를 시작하고 iPad의 텍스트 입력칸을 선택한 뒤 클립보드를 입력하세요.");
             return;
         }
 
         if (!System.Windows.Clipboard.ContainsText())
         {
-            AddActivity("Clipboard", "PC clipboard does not contain text.");
+            AddActivity("클립보드", "PC 클립보드에 텍스트가 없습니다.");
             return;
         }
 
         var text = System.Windows.Clipboard.GetText();
         if (string.IsNullOrEmpty(text))
         {
-            AddActivity("Clipboard", "PC clipboard text is empty.");
+            AddActivity("클립보드", "PC 클립보드 텍스트가 비어 있습니다.");
             return;
         }
 
@@ -567,7 +575,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             await Task.Delay(4);
         }
 
-        AddActivity("Clipboard", $"Typed {typedCount} clipboard characters to iPad. Skipped unsupported: {skippedCount}.");
+        AddActivity("클립보드", $"iPad로 클립보드 문자 {typedCount}개를 입력했습니다. 지원하지 않아 건너뜀: {skippedCount}개.");
     }
 
     private static string DescribeClipboardCharacter(char character)
@@ -609,7 +617,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (shouldLog)
         {
-            _ = Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"dx={deltaX}, dy={deltaY}, buttons={buttons}"));
+            _ = Dispatcher.InvokeAsync(() => AddActivity("마우스", $"dx={deltaX}, dy={deltaY}, buttons={buttons}"));
         }
 
         if (shouldStartLoop)
@@ -664,7 +672,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 mouseSendLoopRunning = false;
             }
 
-            await Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"Mouse send failed: {ex.Message}"));
+            await Dispatcher.InvokeAsync(() => AddActivity("마우스", $"마우스 전송 실패: {ex.Message}"));
         }
     }
 
@@ -676,12 +684,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (shouldLog)
             {
-                await Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"dx={deltaX}, dy={deltaY}, wheel={wheel}, buttons={buttons}"));
+                await Dispatcher.InvokeAsync(() => AddActivity("마우스", $"dx={deltaX}, dy={deltaY}, wheel={wheel}, buttons={buttons}"));
             }
         }
         catch (Exception ex)
         {
-            await Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"Mouse button send failed: {ex.Message}"));
+            await Dispatcher.InvokeAsync(() => AddActivity("마우스", $"마우스 버튼 전송 실패: {ex.Message}"));
         }
     }
 
@@ -690,11 +698,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             await bridgeService.SendKeyboardReportAsync(activeDevice, report, description);
-            await Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"Mouse button -> {description}"));
+            await Dispatcher.InvokeAsync(() => AddActivity("마우스", $"마우스 버튼 -> {description}"));
         }
         catch (Exception ex)
         {
-            await Dispatcher.InvokeAsync(() => AddActivity("Pointer", $"Mouse button send failed: {ex.Message}"));
+            await Dispatcher.InvokeAsync(() => AddActivity("마우스", $"마우스 버튼 전송 실패: {ex.Message}"));
         }
     }
 
@@ -865,26 +873,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RefreshStatus()
     {
-        ActiveDeviceNameText.Text = "BLE HID Keyboard + Mouse";
+        ActiveDeviceNameText.Text = "BLE HID 키보드 + 마우스";
         StatusText.Text = bridgeService.IsRunning
-            ? "Capturing global input"
-            : "Idle";
-        BridgeToggleButton.Content = bridgeService.IsRunning ? "Stop Bridge" : "Start Bridge";
-        KeyboardStateText.Text = bridgeService.IsRunning ? "Capturing" : "Ready";
+            ? "입력 캡처 중"
+            : "대기 중";
+        BridgeToggleButton.Content = bridgeService.IsRunning ? "브릿지 중지" : "브릿지 시작";
+        KeyboardStateText.Text = bridgeService.IsRunning ? "전송 중" : "준비됨";
         MouseStateText.Text = bridgeService.IsRunning
-            ? isMouseSignalEnabled ? "Capturing" : "Off"
-            : "Ready";
-        MouseSignalSummaryText.Text = isMouseSignalEnabled ? "On" : "Off";
+            ? isMouseSignalEnabled ? "전송 중" : "꺼짐"
+            : "준비됨";
+        MouseSignalSummaryText.Text = isMouseSignalEnabled ? "켜짐" : "꺼짐";
         RemoteDeviceText.Text = bridgeService.IsRunning
-            ? "Look for Accessory first; after pairing, the name may change to this PC"
-                            : "Press Ctrl+CapsLock or Start Bridge";
+            ? "먼저 '액세서리'를 찾으세요. 연결 후 이 PC 이름으로 바뀔 수 있습니다."
+                            : "Ctrl+CapsLock 또는 브릿지 시작을 누르세요.";
+    }
+
+    private void ShowBridgeStatusToast(string label, string symbol, bool isConnected)
+    {
+        bridgeStatusToast?.Close();
+        bridgeStatusToast = new BridgeStatusToastWindow(label, symbol, isConnected);
+        bridgeStatusToast.Closed += (_, _) => bridgeStatusToast = null;
+        bridgeStatusToast.ShowBriefly();
     }
 
     private void InitializeTrayIcon()
     {
         var contextMenu = new Forms.ContextMenuStrip();
-        contextMenu.Items.Add("Show KeyBridge", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
-        contextMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitFromTray));
+        contextMenu.Items.Add("KeyBridge 열기", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
+        contextMenu.Items.Add("종료", null, (_, _) => Dispatcher.Invoke(ExitFromTray));
 
         trayIcon = new Forms.NotifyIcon
         {
@@ -938,7 +954,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        trayIcon.ShowBalloonTip(2500, "KeyBridge", "KeyBridge is still running in the tray.", Forms.ToolTipIcon.Info);
+        trayIcon.ShowBalloonTip(2500, "KeyBridge", "KeyBridge가 트레이에서 계속 실행 중입니다.", Forms.ToolTipIcon.Info);
         hasShownTrayTip = true;
     }
 
@@ -995,7 +1011,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (bridgeService.IsRunning)
         {
-            await StopBridgeAsync("Bridge stopped because the app closed.");
+            await StopBridgeAsync("앱 종료로 브릿지를 중지했습니다.");
         }
 
         inputHookService.Dispose();
