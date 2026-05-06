@@ -347,6 +347,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
+            if (IsOneShotKeyboardToggle(e.CapturedKey))
+            {
+                pressedKeys.Remove(e.VirtualKey);
+
+                if (e.IsDown)
+                {
+                    await bridgeService.SendKeyboardStateAsync(activeDevice, new[] { e.CapturedKey });
+                    await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+                    AddActivity("Keyboard", $"{e.Key} -> one-shot toggle");
+                }
+
+                return;
+            }
+
             if (e.IsDown)
             {
                 pressedKeys[e.VirtualKey] = e.CapturedKey;
@@ -359,6 +373,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             await bridgeService.SendKeyboardStateAsync(activeDevice, pressedKeys.Values.ToList());
             AddActivity("Keyboard", $"{(e.IsDown ? "Down" : "Up")} {e.Key}; held: {HidKeyboardReport.DescribePressedKeys(pressedKeys.Values)}");
         });
+    }
+
+    private static bool IsOneShotKeyboardToggle(CapturedKey key)
+    {
+        return key.VirtualKey is 0x14 or 0x15 or 0xA5
+            || key.Key is System.Windows.Input.Key.CapsLock
+                or System.Windows.Input.Key.HangulMode
+                or System.Windows.Input.Key.KanaMode
+                or System.Windows.Input.Key.RightAlt;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
