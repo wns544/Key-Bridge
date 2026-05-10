@@ -54,13 +54,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const byte VkRMenu = 0xA5;
     private const byte VkLWin = 0x5B;
     private const byte VkRWin = 0x5C;
+    private const int VkLButton = 0x01;
+    private const int VkRButton = 0x02;
+    private const int VkMButton = 0x04;
     private const ushort ConsumerMute = 0x00E2;
     private const ushort ConsumerVolumeIncrement = 0x00E9;
     private const ushort ConsumerVolumeDecrement = 0x00EA;
     private const ushort ConsumerBrowserBack = 0x0224;
     private const ushort ConsumerBrowserForward = 0x0225;
-    private const double MouseScaleX = 1.0;
-    private const double MouseScaleY = 1.0;
+    private const double MouseScaleX = 0.8;
+    private const double MouseScaleY = 0.8;
     private const int MouseSendIntervalMs = 8;
     private const string RunRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunRegistryName = "KeyBridge";
@@ -68,7 +71,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IHidBridgeService bridgeService = new BluetoothHidBridgeService();
     private readonly GlobalInputHookService inputHookService = new();
     private readonly BluetoothCapabilityProbe bluetoothCapabilityProbe = new();
-    private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Ctrl+CapsLock");
+    private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Alt+Ctrl+Q");
     private readonly Dictionary<int, CapturedKey> pressedKeys = [];
     private readonly object mouseStateLock = new();
     private DateTime lastPointerEvent = DateTime.MinValue;
@@ -92,6 +95,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.EmergencyStopRequested += InputHookService_EmergencyStopRequested;
         inputHookService.BridgeToggleRequested += InputHookService_BridgeToggleRequested;
         inputHookService.MouseSignalToggleRequested += InputHookService_MouseSignalToggleRequested;
+        inputHookService.EmojiPickerRequested += InputHookService_EmojiPickerRequested;
         inputHookService.ClipboardTypingRequested += InputHookService_ClipboardTypingRequested;
         bridgeService.DiagnosticMessage += BridgeService_DiagnosticMessage;
         inputHookService.SuppressForwardedKeys = false;
@@ -103,10 +107,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StateChanged += Window_StateChanged;
         InitializeTrayIcon();
         StartWithWindowsCheckBox.IsChecked = IsStartWithWindowsEnabled();
+        MouseSignalCheckBox.IsChecked = true;
 
         DataContext = this;
         AddActivity("시스템", "앱이 준비되었습니다.");
-        AddActivity("시스템", "Ctrl+CapsLock으로 브릿지를 시작하거나 중지할 수 있습니다.");
+        AddActivity("시스템", "Alt+Ctrl+Q로 브릿지를 시작하거나 중지할 수 있습니다.");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -156,12 +161,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReleaseLocalMouseButtons();
             inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
             inputHookService.AlwaysSuppressWindowsKeyShortcuts = true;
-            inputHookService.EnableClipboardTypingShortcut = true;
+            inputHookService.EnableClipboardTypingShortcut = false;
             inputHookService.SuppressForwardedPointerEvents = isMouseSignalEnabled;
             UpdatePointerCapture();
 
             BackendStateText.Text = "BLE HID";
-            RemoteDeviceText.Text = "먼저 '액세서리'를 찾으세요. 연결 후 이 PC 이름으로 바뀔 수 있습니다.";
+            RemoteDeviceText.Text = "페어링 중입니다. iPad에서 '액세서리'를 찾으세요. 연결 후 이름이 바뀔 수 있습니다.";
             AddActivity("브릿지", "BLE HID 검색을 시작했습니다. iPad에서 먼저 '액세서리'를 선택하세요. 연결 후 이 PC의 블루투스 이름으로 바뀔 수 있습니다.");
             RefreshStatus();
             ShowBridgeStatusToast("Key Bridge", "iPad", true);
@@ -170,7 +175,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             await bridgeService.StopAsync();
             AddActivity("브릿지", $"{ex.GetType().Name}: {ex.Message}");
-            BackendStateText.Text = "BLE HID 실패";
+            BackendStateText.Text = "실패";
             RefreshStatus();
         }
     }
@@ -314,7 +319,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         MouseSignalSummaryText.Text = isMouseSignalEnabled ? "켜짐" : "꺼짐";
         MouseStateText.Text = bridgeService.IsRunning
-            ? isMouseSignalEnabled ? "전송 중" : "꺼짐"
+            ? isMouseSignalEnabled ? "연결됨" : "꺼짐"
             : "준비됨";
         AddActivity("시스템", isMouseSignalEnabled
             ? "마우스 전송을 켰습니다."
@@ -322,7 +327,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (IsLoaded)
         {
-            ShowBridgeStatusToast("Mouse", "Mouse", isMouseSignalEnabled);
+            ShowBridgeStatusToast("마우스", "Mouse", isMouseSignalEnabled);
         }
     }
 
@@ -496,7 +501,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (bridgeService.IsRunning)
             {
-                await StopBridgeAsync("Ctrl+CapsLock으로 브릿지를 중지했습니다.");
+                await StopBridgeAsync("Alt+Ctrl+Q로 브릿지를 중지했습니다.");
             }
             else
             {
@@ -517,6 +522,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             MouseSignalCheckBox.IsChecked = !isMouseSignalEnabled;
+        });
+    }
+
+    private void InputHookService_EmojiPickerRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(async () =>
+        {
+            if (!bridgeService.IsRunning)
+            {
+                AddActivity("키보드", "먼저 브릿지를 시작한 뒤 Ctrl+Alt+E로 이모티콘/입력 선택을 열 수 있습니다.");
+                return;
+            }
+
+            pressedKeys.Clear();
+            await bridgeService.SendKeyboardReportAsync(activeDevice, new byte[] { 0x01, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x00 }, "emoji/input picker Ctrl+Space");
+            await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+            AddActivity("키보드", "Ctrl+Alt+E -> 이모티콘/입력 선택");
         });
     }
 
@@ -551,6 +573,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (TryFindUnsupportedClipboardCharacter(text, out var unsupportedCharacter))
+        {
+            AddActivity("클립보드", $"중단: 현재 클립보드 입력은 영문/숫자/기본 기호만 안정적으로 지원합니다. 지원하지 않는 문자: '{DescribeClipboardCharacter(unsupportedCharacter)}'");
+            return;
+        }
+
         pressedKeys.Clear();
         await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
 
@@ -576,6 +604,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         AddActivity("클립보드", $"iPad로 클립보드 문자 {typedCount}개를 입력했습니다. 지원하지 않아 건너뜀: {skippedCount}개.");
+    }
+
+    private static bool TryFindUnsupportedClipboardCharacter(string text, out char unsupportedCharacter)
+    {
+        foreach (var character in text)
+        {
+            if (character == '\r')
+            {
+                continue;
+            }
+
+            if (!HidKeyboardReport.TryCreateTextInputReport(character, out _))
+            {
+                unsupportedCharacter = character;
+                return true;
+            }
+        }
+
+        unsupportedCharacter = '\0';
+        return false;
     }
 
     private static string DescribeClipboardCharacter(char character)
@@ -754,7 +802,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static void ReleaseLocalMouseButtons()
     {
-        mouse_event(MouseEventFLeftUp | MouseEventFRightUp | MouseEventFMiddleUp, 0, 0, 0, UIntPtr.Zero);
+        uint flags = 0;
+
+        if ((GetAsyncKeyState(VkLButton) & 0x8000) != 0)
+        {
+            flags |= MouseEventFLeftUp;
+        }
+
+        if ((GetAsyncKeyState(VkRButton) & 0x8000) != 0)
+        {
+            flags |= MouseEventFRightUp;
+        }
+
+        if ((GetAsyncKeyState(VkMButton) & 0x8000) != 0)
+        {
+            flags |= MouseEventFMiddleUp;
+        }
+
+        if (flags != 0)
+        {
+            mouse_event(flags, 0, 0, 0, UIntPtr.Zero);
+        }
     }
 
     private void UpdatePointerCapture()
@@ -873,19 +941,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RefreshStatus()
     {
-        ActiveDeviceNameText.Text = "BLE HID 키보드 + 마우스";
+        ActiveDeviceNameText.Text = "노트북 -> iPad";
         StatusText.Text = bridgeService.IsRunning
-            ? "입력 캡처 중"
-            : "대기 중";
-        BridgeToggleButton.Content = bridgeService.IsRunning ? "브릿지 중지" : "브릿지 시작";
-        KeyboardStateText.Text = bridgeService.IsRunning ? "전송 중" : "준비됨";
+            ? "연결됨"
+            : "연결 준비 완료";
+        BridgeToggleButton.Content = bridgeService.IsRunning ? "해제" : "연결";
+        KeyboardStateText.Text = bridgeService.IsRunning ? "연결됨" : "준비됨";
         MouseStateText.Text = bridgeService.IsRunning
-            ? isMouseSignalEnabled ? "전송 중" : "꺼짐"
+            ? isMouseSignalEnabled ? "연결됨" : "꺼짐"
             : "준비됨";
         MouseSignalSummaryText.Text = isMouseSignalEnabled ? "켜짐" : "꺼짐";
         RemoteDeviceText.Text = bridgeService.IsRunning
-            ? "먼저 '액세서리'를 찾으세요. 연결 후 이 PC 이름으로 바뀔 수 있습니다."
-                            : "Ctrl+CapsLock 또는 브릿지 시작을 누르세요.";
+            ? "페어링 중입니다. iPad에서 '액세서리'를 찾으세요. 연결 후 이름이 바뀔 수 있습니다."
+                            : "연결 준비 완료. Alt+Ctrl+Q 또는 연결 버튼을 누르세요.";
     }
 
     private void ShowBridgeStatusToast(string label, string symbol, bool isConnected)

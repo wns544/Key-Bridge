@@ -32,8 +32,9 @@ public sealed class GlobalInputHookService : IDisposable
     private const int VkLWin = 0x5B;
     private const int VkRWin = 0x5C;
     private const int VkF8 = 0x77;
+    private const int VkE = 0x45;
     private const int VkV = 0x56;
-    private const int VkCapital = 0x14;
+    private const int VkQ = 0x51;
 
     private readonly LowLevelProc keyboardProc;
     private readonly LowLevelProc mouseProc;
@@ -57,6 +58,8 @@ public sealed class GlobalInputHookService : IDisposable
     public event EventHandler? BridgeToggleRequested;
 
     public event EventHandler? MouseSignalToggleRequested;
+
+    public event EventHandler? EmojiPickerRequested;
 
     public event EventHandler? ClipboardTypingRequested;
 
@@ -188,6 +191,13 @@ public sealed class GlobalInputHookService : IDisposable
                 return 1;
             }
 
+            if (isDown && IsEmojiPickerChord(virtualKey))
+            {
+                suppressedChordKeyUps.Add(virtualKey);
+                EmojiPickerRequested?.Invoke(this, EventArgs.Empty);
+                return 1;
+            }
+
             if (EnableClipboardTypingShortcut && ShouldCaptureInput() && isDown && IsClipboardTypingChord(virtualKey))
             {
                 suppressedChordKeyUps.Add(virtualKey);
@@ -302,12 +312,18 @@ public sealed class GlobalInputHookService : IDisposable
 
     private bool IsBridgeToggleChord(int virtualKey)
     {
-        if (virtualKey != VkCapital)
+        if (virtualKey != VkQ
+            && virtualKey != VkControl
+            && virtualKey != VkLControl
+            && virtualKey != VkRControl
+            && virtualKey != VkMenu
+            && virtualKey != VkLMenu
+            && virtualKey != VkRMenu)
         {
             return false;
         }
 
-        return IsControlDown() && !IsAltDown();
+        return IsControlDown() && IsAltDown() && IsQDown();
     }
 
     private bool IsMouseSignalToggleChord(int virtualKey)
@@ -318,6 +334,16 @@ public sealed class GlobalInputHookService : IDisposable
         }
 
         return IsControlDown() && !IsAltDown();
+    }
+
+    private bool IsEmojiPickerChord(int virtualKey)
+    {
+        if (virtualKey != VkE)
+        {
+            return false;
+        }
+
+        return IsControlDown() && IsAltDown();
     }
 
     private bool IsClipboardTypingChord(int virtualKey)
@@ -338,6 +364,12 @@ public sealed class GlobalInputHookService : IDisposable
             || (GetAsyncKeyState(VkControl) & 0x8000) != 0
             || (GetAsyncKeyState(VkLControl) & 0x8000) != 0
             || (GetAsyncKeyState(VkRControl) & 0x8000) != 0;
+    }
+
+    private bool IsQDown()
+    {
+        return downVirtualKeys.Contains(VkQ)
+            || (GetAsyncKeyState(VkQ) & 0x8000) != 0;
     }
 
     private bool IsShiftDown()

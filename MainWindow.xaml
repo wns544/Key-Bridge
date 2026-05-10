@@ -6,311 +6,629 @@
         xmlns:models="clr-namespace:KeyboardPadBridge.Models"
         mc:Ignorable="d"
         Title="KeyBridge"
-        Width="1120"
-        Height="720"
-        MinWidth="920"
-        MinHeight="620"
-        Background="#F4F1EA"
+        Width="1180"
+        Height="780"
+        MinWidth="760"
+        MinHeight="640"
+        Background="{DynamicResource CanvasParchmentBrush}"
         Closed="Window_Closed">
     <Window.Resources>
-        <SolidColorBrush x:Key="InkBrush" Color="#1D2522" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#65706B" />
-        <SolidColorBrush x:Key="PanelBrush" Color="#FFFCF4" />
-        <SolidColorBrush x:Key="LineBrush" Color="#D8D0C2" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#0F6A5B" />
-        <SolidColorBrush x:Key="AccentSoftBrush" Color="#DDF1EA" />
-        <SolidColorBrush x:Key="WarnBrush" Color="#B45525" />
+        <SolidColorBrush x:Key="CanvasBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="CanvasParchmentBrush" Color="#F5F5F7" />
+        <SolidColorBrush x:Key="SurfacePearlBrush" Color="#FAFAFC" />
+        <SolidColorBrush x:Key="SurfaceDarkBrush" Color="#272729" />
+        <SolidColorBrush x:Key="InkBrush" Color="#1D1D1F" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#7A7A7A" />
+        <SolidColorBrush x:Key="MutedDarkBrush" Color="#CCCCCC" />
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#0066CC" />
+        <SolidColorBrush x:Key="PrimaryOnDarkBrush" Color="#2997FF" />
+        <SolidColorBrush x:Key="HairlineBrush" Color="#E0E0E0" />
+        <SolidColorBrush x:Key="DividerSoftBrush" Color="#F0F0F0" />
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
-            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Malgun Gothic, Segoe UI" />
+            <Setter Property="FontFamily" Value="Segoe UI Variable Display, Malgun Gothic, Segoe UI, system-ui" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style x:Key="NavText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+
+        <Style x:Key="HeroTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="52" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LineHeight" Value="58" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="DisplayTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="38" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LineHeight" Value="43" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="LeadText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="LineHeight" Value="29" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="CaptionText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="LineHeight" Value="21" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="MinHeight" Value="38" />
-            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="MinHeight" Value="42" />
+            <Setter Property="MinWidth" Value="108" />
+            <Setter Property="Padding" Value="28,9" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="Background" Value="{StaticResource SurfacePearlBrush}" />
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Malgun Gothic, Segoe UI" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="18"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="RenderTransformOrigin" Value="0.5,0.5" />
+                                <Setter TargetName="ButtonBorder" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="MinWidth" Value="126" />
+            <Setter Property="Padding" Value="32,10" />
         </Style>
 
-        <Style x:Key="PanelBorder" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Style x:Key="SecondaryPillButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource CanvasBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+            <Setter Property="MinWidth" Value="150" />
+            <Setter Property="Padding" Value="30,9" />
+        </Style>
+
+        <Style x:Key="UtilityCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CanvasBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="24" />
+        </Style>
+
+        <Style x:Key="StatusCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfacePearlBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="MinWidth" Value="118" />
+            <Setter Property="MinHeight" Value="64" />
         </Style>
     </Window.Resources>
 
-    <Grid Margin="28">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,22">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                <CheckBox x:Name="SuppressKeysCheckBox"
-                          Content="노트북 입력 차단"
-                          IsChecked="True"
-                          VerticalAlignment="Center"
-                          Margin="0,0,14,0"
-                          Checked="SuppressKeysCheckBox_Changed"
-                          Unchecked="SuppressKeysCheckBox_Changed" />
-                <CheckBox x:Name="MouseSignalCheckBox"
-                          Content="마우스 전송"
-                          IsChecked="False"
-                          VerticalAlignment="Center"
-                          Margin="0,0,14,0"
-                          Checked="MouseSignalCheckBox_Changed"
-                          Unchecked="MouseSignalCheckBox_Changed" />
-                <CheckBox x:Name="StartWithWindowsCheckBox"
-                          Content="윈도우 시작 시 실행"
-                          VerticalAlignment="Center"
-                          Margin="0,0,14,0"
-                          Checked="StartWithWindowsCheckBox_Changed"
-                          Unchecked="StartWithWindowsCheckBox_Changed" />
-                <Button x:Name="TypeClipboardButton"
-                        Content="클립보드 입력"
-                        Margin="0,0,8,0"
-                        Click="TypeClipboardButton_Click" />
-                <Button x:Name="MouseTestButton"
-                        Content="마우스 테스트"
-                        Margin="0,0,8,0"
-                        Click="MouseTestButton_Click" />
-                <Button x:Name="ProbeButton"
-                        Content="진단 실행"
-                        Margin="0,0,8,0"
-                        Click="ProbeButton_Click" />
-                <Button x:Name="AdvertiseButton"
-                        Content="기기 다시 찾기"
-                        Margin="0,0,8,0"
-                        Click="AdvertiseButton_Click" />
-                <Button x:Name="BridgeToggleButton"
-                        Style="{StaticResource PrimaryButton}"
-                        Content="브릿지 시작"
-                        Click="BridgeToggleButton_Click" />
-            </StackPanel>
-            <StackPanel>
-                <TextBlock Text="KeyBridge"
-                           FontSize="30"
-                           FontWeight="SemiBold" />
-                <TextBlock Text="노트북 키보드와 마우스를 iPad로 보내는 브릿지"
-                           Foreground="{StaticResource MutedBrush}"
-                           Margin="0,4,0,0" />
-            </StackPanel>
-        </DockPanel>
-
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="320" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <Border Grid.Column="0" Style="{StaticResource PanelBorder}" Padding="18" Margin="0,0,18,0">
-                <StackPanel>
-                    <TextBlock Text="블루투스 HID 세션"
-                               FontSize="18"
+        <Border Grid.Row="0"
+                Background="{StaticResource CanvasBrush}"
+                BorderBrush="{StaticResource HairlineBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="24,14">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left"
+                            MinWidth="220"
+                            Margin="0,0,16,0">
+                    <TextBlock Text="KeyBridge"
+                               FontSize="28"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="iPad에서는 처음에 '액세서리'로 보일 수 있고, 연결 후 이 PC의 블루투스 이름으로 바뀔 수 있습니다."
-                               TextWrapping="Wrap"
-                               Foreground="{StaticResource MutedBrush}"
-                               Margin="0,4,0,18" />
-
-                    <Border Padding="14"
-                            Background="#FFFFFF"
-                            BorderBrush="{StaticResource LineBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8">
-                        <StackPanel>
-                            <TextBlock Text="전송 역할"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12" />
-                            <TextBlock Text="BLE HID 키보드 + 마우스"
-                                       FontWeight="SemiBold"
-                                       Margin="0,3,0,12" />
-
-                            <TextBlock Text="연결 대상"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12" />
-                            <TextBlock x:Name="RemoteDeviceText"
-                                       Text="iPad/휴대폰 연결 대기 중"
-                                       TextWrapping="Wrap"
-                                       FontWeight="SemiBold"
-                                       Margin="0,3,0,12" />
-
-                            <TextBlock Text="긴급 중지"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12" />
-                            <TextBlock Text="Ctrl+CapsLock: 시작/중지, Ctrl+Alt+Esc: 긴급 중지"
-                                       FontWeight="SemiBold"
-                                       Margin="0,3,0,12" />
-
-                            <TextBlock Text="로컬 안전"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12" />
-                            <TextBlock Text="윈도우식 Ctrl 단축키 사용"
-                                       FontWeight="SemiBold"
-                                       Margin="0,3,0,12" />
-
-                            <TextBlock Text="마우스"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12" />
-                            <TextBlock x:Name="MouseSignalSummaryText"
-                                       Text="꺼짐"
-                                       FontWeight="SemiBold"
-                                       Margin="0,3,0,12" />
-
-                            <TextBlock Text="단축키"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12" />
-                            <Grid Margin="0,6,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="92" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Ctrl+Caps" FontWeight="SemiBold" />
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="브릿지 시작/중지" TextWrapping="Wrap" />
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Ctrl+F8" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="마우스 전송 켜기/끄기" TextWrapping="Wrap" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Ctrl+Alt+Esc" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="긴급 중지" TextWrapping="Wrap" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Alt+Tab" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="iPad 앱 전환" TextWrapping="Wrap" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Ctrl+A/C/V" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="윈도우식 단축키" TextWrapping="Wrap" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="한/영" FontWeight="SemiBold" Margin="0,5,0,0" />
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="입력 언어 전환" TextWrapping="Wrap" Margin="0,5,0,0" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
+                    <TextBlock Text="PC 키보드 브릿지"
+                               Style="{StaticResource NavText}" />
                 </StackPanel>
-            </Border>
 
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+                <WrapPanel DockPanel.Dock="Right"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           ItemHeight="44">
+                    <CheckBox x:Name="SuppressKeysCheckBox"
+                              Content="노트북 키 입력 차단"
+                              IsChecked="True"
+                              Margin="0,0,12,0"
+                              VerticalAlignment="Center"
+                              Checked="SuppressKeysCheckBox_Changed"
+                              Unchecked="SuppressKeysCheckBox_Changed" />
+                    <CheckBox x:Name="MouseSignalCheckBox"
+                              Content="마우스 신호"
+                              IsChecked="False"
+                              Margin="0,0,12,0"
+                              VerticalAlignment="Center"
+                              Checked="MouseSignalCheckBox_Changed"
+                              Unchecked="MouseSignalCheckBox_Changed" />
+                    <CheckBox x:Name="StartWithWindowsCheckBox"
+                              Content="Windows 시작 시 자동 실행"
+                              Margin="0,0,12,0"
+                              VerticalAlignment="Center"
+                              Checked="StartWithWindowsCheckBox_Changed"
+                              Unchecked="StartWithWindowsCheckBox_Changed" />
+                    <Button Content="클립보드 입력"
+                            MinWidth="128"
+                            Margin="0,0,8,0"
+                            Click="TypeClipboardButton_Click" />
+                    <Button x:Name="MouseTestButton"
+                            Content="마우스 테스트"
+                            MinWidth="128"
+                            Margin="0,0,8,0"
+                            Click="MouseTestButton_Click" />
+                    <Button x:Name="ProbeButton"
+                            Content="진단 실행"
+                            MinWidth="116"
+                            Margin="0,0,8,0"
+                            Click="ProbeButton_Click" />
+                    <Button x:Name="AdvertiseButton"
+                            Content="기기 다시 찾기"
+                            Style="{StaticResource SecondaryPillButton}"
+                            MinWidth="144"
+                            Margin="0,0,8,0"
+                            Click="AdvertiseButton_Click" />
+                    <Button x:Name="BridgeToggleButton"
+                            Content="연결"
+                            Style="{StaticResource PrimaryButton}"
+                            Click="BridgeToggleButton_Click" />
+                </WrapPanel>
+            </DockPanel>
+        </Border>
 
-                <Border Grid.Row="0" Style="{StaticResource PanelBorder}" Padding="20" Margin="0,0,0,18">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <Border Background="{StaticResource CanvasBrush}"
+                        Padding="32,70,32,64">
+                    <StackPanel MaxWidth="980"
+                                HorizontalAlignment="Center">
+                        <TextBlock Text="노트북 키보드를 iPad까지."
+                                   Style="{StaticResource HeroTitle}" />
+                        <TextBlock Text="KeyBridge는 Windows 노트북 입력을 Bluetooth 키보드와 마우스처럼 다른 기기에 이어주는 조용한 생산성 도구입니다."
+                                   Style="{StaticResource LeadText}"
+                                   Margin="0,14,0,24"
+                                   MaxWidth="760" />
+                        <WrapPanel HorizontalAlignment="Center">
+                            <Button Content="연결 / 해제"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Margin="0,0,10,8"
+                                    Click="BridgeToggleButton_Click" />
+                            <Button Content="기기 다시 찾기"
+                                    Style="{StaticResource SecondaryPillButton}"
+                                    Margin="0,0,0,8"
+                                    Click="AdvertiseButton_Click" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
 
-                        <StackPanel>
-                            <TextBlock x:Name="ActiveDeviceNameText"
-                                       Text="BLE HID 키보드 + 마우스"
-                                       FontSize="24"
+                <Border Background="{StaticResource CanvasParchmentBrush}"
+                        Padding="32,48">
+                    <WrapPanel MaxWidth="1160"
+                               HorizontalAlignment="Center"
+                               ItemWidth="540">
+                        <Border Style="{StaticResource UtilityCard}"
+                                Width="520"
+                                MinHeight="590"
+                                Margin="0,0,24,24">
+                            <StackPanel>
+                                <TextBlock Text="현재 상태"
+                                           Style="{StaticResource CaptionText}" />
+                                <TextBlock x:Name="ActiveDeviceNameText"
+                                           Text="노트북 -> iPad"
+                                           FontSize="38"
+                                           FontWeight="SemiBold"
+                                           LineHeight="44"
+                                           Margin="0,12,0,0" />
+                                <TextBlock x:Name="StatusText"
+                                           Text="연결 준비 완료"
+                                           FontSize="28"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryBrush}"
+                                           LineHeight="34"
+                                           Margin="0,4,0,24" />
+
+                                <Viewbox Stretch="Uniform"
+                                         StretchDirection="DownOnly"
+                                         HorizontalAlignment="Center"
+                                         MaxWidth="460"
+                                         Margin="0,8,0,26">
+                                    <Grid Width="620" Height="245">
+                                        <Grid Width="230"
+                                              Height="142"
+                                              HorizontalAlignment="Left"
+                                              VerticalAlignment="Center"
+                                              Margin="20,0,0,0">
+                                            <Grid Margin="22,8">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="*" />
+                                                    <RowDefinition Height="22" />
+                                                </Grid.RowDefinitions>
+
+                                                <Canvas Grid.Row="0"
+                                                        Width="160"
+                                                        Height="98"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Bottom">
+                                                    <Border Width="142"
+                                                            Height="86"
+                                                            Canvas.Left="9"
+                                                            Canvas.Top="0"
+                                                            CornerRadius="7"
+                                                            BorderBrush="#D2D2D7"
+                                                            BorderThickness="2"
+                                                            Background="{StaticResource SurfacePearlBrush}" />
+                                                    <Line X1="16" Y1="88" X2="144" Y2="88"
+                                                          Stroke="#C9C9CF"
+                                                          StrokeThickness="2" />
+                                                    <Path Fill="#D8D8DE"
+                                                          Data="M 0,92 L 160,92 L 148,98 L 12,98 Z" />
+                                                    <Path Fill="#C9C9CF"
+                                                          Data="M 68,92 L 92,92 L 88,95 L 72,95 Z" />
+                                                </Canvas>
+
+                                                <TextBlock Text="노트북"
+                                                           Grid.Row="1"
+                                                           FontSize="18"
+                                                           Foreground="{StaticResource MutedBrush}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,4,0,0" />
+                                            </Grid>
+                                        </Grid>
+
+                                        <Canvas Width="170"
+                                                Height="70"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center">
+                                            <Line X1="0" Y1="35" X2="146" Y2="35"
+                                                  Stroke="{StaticResource PrimaryBrush}"
+                                                  StrokeThickness="3" />
+                                            <Polygon Points="146,24 170,35 146,46"
+                                                     Fill="{StaticResource PrimaryBrush}" />
+                                            <Ellipse Width="7" Height="7" Fill="#A6CBEF" Canvas.Left="62" Canvas.Top="54" />
+                                            <Ellipse Width="7" Height="7" Fill="#6BA9E8" Canvas.Left="82" Canvas.Top="54" />
+                                            <Ellipse Width="7" Height="7" Fill="{StaticResource PrimaryBrush}" Canvas.Left="102" Canvas.Top="54" />
+                                        </Canvas>
+
+                                        <Border Width="170"
+                                                Height="210"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center"
+                                                CornerRadius="28"
+                                                BorderBrush="#D2D2D7"
+                                                BorderThickness="2"
+                                                Background="{StaticResource CanvasBrush}"
+                                                Margin="0,0,20,0">
+                                            <Border Margin="18"
+                                                    CornerRadius="18"
+                                                    Background="{StaticResource SurfacePearlBrush}">
+                                                <TextBlock Text="iPad"
+                                                           FontSize="28"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                            </Border>
+                                        </Border>
+                                    </Grid>
+                                </Viewbox>
+
+                                <WrapPanel HorizontalAlignment="Center">
+                                    <Border Style="{StaticResource StatusCard}" Width="118" Margin="0,0,12,12">
+                                        <StackPanel>
+                                            <TextBlock Text="키보드" Style="{StaticResource CaptionText}" />
+                                            <TextBlock x:Name="KeyboardStateText" Text="준비됨" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource StatusCard}" Width="128" Margin="0,0,12,12">
+                                        <StackPanel>
+                                            <TextBlock Text="블루투스" Style="{StaticResource CaptionText}" />
+                                            <TextBlock x:Name="BackendStateText" Text="BLE HID" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Style="{StaticResource StatusCard}" Width="118" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="마우스" Style="{StaticResource CaptionText}" />
+                                            <TextBlock x:Name="MouseStateText" Text="준비됨" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Width="520">
+                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,22">
+                                <StackPanel>
+                                    <TextBlock Text="빠른 동작"
+                                               FontSize="26"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Text="불필요한 화면 전환 없이 빠르게 연결하고 해제합니다."
+                                               Style="{StaticResource CaptionText}"
+                                               Margin="0,4,0,20" />
+                                    <Button Content="연결 / 해제"
+                                            Style="{StaticResource PrimaryButton}"
+                                            HorizontalAlignment="Stretch"
+                                            Click="BridgeToggleButton_Click" />
+                                    <Button Content="클립보드 입력"
+                                            HorizontalAlignment="Stretch"
+                                            Margin="0,10,0,0"
+                                            Click="TypeClipboardButton_Click" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,22">
+                                <StackPanel>
+                                    <TextBlock Text="페어링"
+                                               FontSize="26"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock x:Name="RemoteDeviceText"
+                                               Text="iPad에서 '액세서리'를 찾아 연결하세요. 연결 후에는 이 PC의 블루투스 이름으로 바뀔 수 있습니다."
+                                               Style="{StaticResource CaptionText}"
+                                               Margin="0,4,0,18" />
+                                    <Button Content="기기 다시 찾기"
+                                            Style="{StaticResource SecondaryPillButton}"
+                                            HorizontalAlignment="Stretch"
+                                            Click="AdvertiseButton_Click" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource UtilityCard}"
+                                    Background="{StaticResource SurfaceDarkBrush}">
+                                <StackPanel>
+                                    <TextBlock Text="트레이 미니"
+                                               Foreground="White"
+                                               FontSize="26"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Text="KeyBridge가 조용히 실행 중일 때 빠르게 상태를 확인하는 작은 화면입니다."
+                                               Foreground="{StaticResource MutedDarkBrush}"
+                                               FontSize="14"
+                                               LineHeight="21"
+                                               Margin="0,4,0,20" />
+                                    <Border Background="#1D1D1F"
+                                            BorderBrush="#3A3A3C"
+                                            BorderThickness="1"
+                                            CornerRadius="18"
+                                            Padding="18">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="KeyBridge"
+                                                           Foreground="{StaticResource MutedDarkBrush}"
+                                                           FontSize="12" />
+                                                <TextBlock Text="연결 준비 완료"
+                                                           Foreground="White"
+                                                           FontSize="22"
+                                                           FontWeight="SemiBold" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1"
+                                                    Content="열기"
+                                                    MinWidth="78"
+                                                    Padding="18,8" />
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </WrapPanel>
+                </Border>
+
+                <Border Background="{StaticResource CanvasBrush}"
+                        Padding="32,56">
+                    <StackPanel MaxWidth="1160"
+                                HorizontalAlignment="Center">
+                        <StackPanel MaxWidth="760"
+                                    Margin="0,0,0,28">
+                            <TextBlock Text="설정"
+                                       FontSize="34"
                                        FontWeight="SemiBold" />
-                            <TextBlock x:Name="StatusText"
-                                       Text="대기 중"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       Margin="0,4,0,0" />
+                            <TextBlock Text="Windows 키보드 감각을 최대한 유지하면서 iPad에 자연스럽게 전달되도록 조정합니다."
+                                       Style="{StaticResource CaptionText}"
+                                       Margin="0,10,0,0" />
+                            <Border Background="{StaticResource CanvasParchmentBrush}"
+                                    BorderBrush="{StaticResource HairlineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Padding="18"
+                                    Margin="0,22,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="단축키"
+                                               FontWeight="SemiBold"
+                                               FontSize="16" />
+                                    <TextBlock Text="Alt + Ctrl + Q: 연결 / 해제"
+                                               Style="{StaticResource CaptionText}"
+                                               Margin="0,8,0,0" />
+                                    <TextBlock Text="Ctrl + F8: 마우스 신호 켜기 / 끄기"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="Ctrl + Alt + E: 이모티콘 / 입력 선택"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="Ctrl + Alt + Esc: 긴급 중지"
+                                               Style="{StaticResource CaptionText}" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
-                        <UniformGrid Grid.Column="1" Columns="3" VerticalAlignment="Center">
-                            <StackPanel Margin="18,0,0,0">
-                                <TextBlock Text="키보드" Foreground="{StaticResource MutedBrush}" FontSize="12" />
-                                <TextBlock x:Name="KeyboardStateText" Text="준비됨" FontWeight="SemiBold" />
-                            </StackPanel>
-                            <StackPanel Margin="18,0,0,0">
-                                <TextBlock Text="마우스" Foreground="{StaticResource MutedBrush}" FontSize="12" />
-                                <TextBlock x:Name="MouseStateText" Text="준비됨" FontWeight="SemiBold" />
-                            </StackPanel>
-                            <StackPanel Margin="18,0,0,0">
-                                <TextBlock Text="백엔드" Foreground="{StaticResource MutedBrush}" FontSize="12" />
-                                <TextBlock x:Name="BackendStateText" Text="BLE HID" FontWeight="SemiBold" />
-                            </StackPanel>
-                        </UniformGrid>
-                    </Grid>
+                        <WrapPanel>
+                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,20,20">
+                                <StackPanel>
+                                    <TextBlock Text="노트북 입력"
+                                               FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <CheckBox x:Name="SuppressKeysCheckBoxSettings"
+                                              Content="브릿지 중 노트북 키 입력 차단"
+                                              IsChecked="{Binding IsChecked, ElementName=SuppressKeysCheckBox}"
+                                              Margin="0,14,0,8" />
+                                    <TextBlock Text="iPad로 입력을 보내는 동안 노트북에도 중복 입력되지 않도록 막습니다."
+                                               Style="{StaticResource CaptionText}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,0,20">
+                                <StackPanel>
+                                    <TextBlock Text="마우스"
+                                               FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <CheckBox x:Name="MouseSignalCheckBoxSettings"
+                                              Content="마우스 신호 보내기"
+                                              IsChecked="{Binding IsChecked, ElementName=MouseSignalCheckBox}"
+                                              Margin="0,14,0,8" />
+                                    <TextBlock x:Name="MouseSignalSummaryText"
+                                               Text="켜짐"
+                                               FontWeight="SemiBold"
+                                               Margin="0,0,0,8" />
+                                    <TextBlock Text="마우스 이동, 클릭, 휠 입력을 iPad 포인터로 전달합니다."
+                                               Style="{StaticResource CaptionText}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,20,20">
+                                <StackPanel>
+                                    <TextBlock Text="시작"
+                                               FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <CheckBox x:Name="StartWithWindowsCheckBoxSettings"
+                                              Content="Windows 시작 시 자동 실행"
+                                              IsChecked="{Binding IsChecked, ElementName=StartWithWindowsCheckBox}"
+                                              Margin="0,14,0,8" />
+                                    <TextBlock Text="Windows가 시작될 때 KeyBridge를 조용히 실행합니다. 필요할 때 트레이에서 다시 열 수 있습니다."
+                                               Style="{StaticResource CaptionText}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,0,20">
+                                <StackPanel>
+                                    <TextBlock Text="진단"
+                                               FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Text="Bluetooth HID 상태를 확인하고 페어링 광고를 다시 시작합니다."
+                                               Style="{StaticResource CaptionText}"
+                                               Margin="0,8,0,16" />
+                                    <WrapPanel>
+                                        <Button Content="진단 실행"
+                                                MinWidth="116"
+                                                Margin="0,0,8,8"
+                                                Click="ProbeButton_Click" />
+                                        <Button Content="기기 다시 찾기"
+                                                Style="{StaticResource SecondaryPillButton}"
+                                                MinWidth="142"
+                                                Margin="0,0,0,8"
+                                                Click="AdvertiseButton_Click" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
+                    </StackPanel>
                 </Border>
 
-                <Border Grid.Row="1" Style="{StaticResource PanelBorder}" Padding="20">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
+                <Border Background="{StaticResource CanvasParchmentBrush}"
+                        Padding="32,48,32,64">
+                    <Border Style="{StaticResource UtilityCard}"
+                            MaxWidth="1160"
+                            HorizontalAlignment="Center">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="260" />
+                            </Grid.RowDefinitions>
 
-                        <DockPanel Grid.Row="0" Margin="0,0,0,14">
-                            <StackPanel DockPanel.Dock="Right"
-                                        Orientation="Horizontal">
-                                <Button Content="로그 복사"
-                                        Margin="0,0,8,0"
-                                        Click="CopyLogsButton_Click" />
-                                <Button Content="로그 지우기"
-                                        Click="ClearLogButton_Click" />
-                            </StackPanel>
-                            <StackPanel>
-                                <TextBlock Text="입력 로그"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Text="브릿지를 시작한 뒤 iPad에서 입력할 앱을 열어 사용하세요. Ctrl+Alt+Esc는 즉시 중지합니다."
-                                           Foreground="{StaticResource MutedBrush}"
-                                           Margin="0,4,0,0" />
-                            </StackPanel>
-                        </DockPanel>
+                            <DockPanel Grid.Row="0"
+                                       LastChildFill="True"
+                                       Margin="0,0,0,18">
+                                <WrapPanel DockPanel.Dock="Right"
+                                           Margin="16,0,0,8">
+                                    <Button Content="로그 복사"
+                                            MinWidth="118"
+                                            Padding="28,9"
+                                            Margin="0,0,8,8"
+                                            Click="CopyLogsButton_Click" />
+                                    <Button Content="로그 지우기"
+                                            MinWidth="124"
+                                            Padding="28,9"
+                                            Margin="0,0,0,8"
+                                            Click="ClearLogButton_Click" />
+                                </WrapPanel>
+                                <StackPanel>
+                                    <TextBlock Text="입력 로그"
+                                               FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Text="동작 기록은 보이되, 브릿지 사용을 방해하지 않게 정리했습니다."
+                                               Style="{StaticResource CaptionText}"
+                                               Margin="0,4,0,0" />
+                                </StackPanel>
+                            </DockPanel>
 
-                        <ListBox Grid.Row="1"
-                                 x:Name="ActivityListBox"
-                                 ItemsSource="{Binding ActivityEvents}"
-                                 BorderBrush="{StaticResource LineBrush}"
-                                 Background="#FFFFFF">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="{x:Type models:ActivityEvent}">
-                                    <Grid Margin="10,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="82" />
-                                            <ColumnDefinition Width="110" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding TimeText}"
-                                                   Foreground="{StaticResource MutedBrush}" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding Channel}"
-                                                   FontWeight="SemiBold" />
-                                        <TextBlock Grid.Column="2"
-                                                   Text="{Binding Message}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
+                            <ListBox Grid.Row="1"
+                                     x:Name="ActivityListBox"
+                                     ItemsSource="{Binding ActivityEvents}"
+                                     BorderBrush="{StaticResource HairlineBrush}"
+                                     BorderThickness="1"
+                                     Background="{StaticResource CanvasBrush}"
+                                     HorizontalContentAlignment="Stretch"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:ActivityEvent}">
+                                        <Grid Margin="10,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="76" />
+                                                <ColumnDefinition Width="96" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding TimeText}"
+                                                       Foreground="{StaticResource MutedBrush}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Channel}"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding Message}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
                 </Border>
-            </Grid>
-        </Grid>
-
-        <Border Grid.Row="2"
-                Background="#FFF7E8"
-                BorderBrush="#E8CA96"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="14"
-                Margin="0,18,0,0">
-            <TextBlock Foreground="{StaticResource WarnBrush}"
-                       TextWrapping="Wrap"
-                       Text="현재 상태: BLE HID 키보드/마우스, 전역 입력 캡처, 윈도우식 단축키 변환, 마우스 전송 제어가 구현되어 있습니다. Ctrl+CapsLock으로 시작/중지하고, Ctrl+Alt+Esc로 긴급 중지합니다." />
-        </Border>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Window>
