@@ -31,8 +31,12 @@ public sealed class GlobalInputHookService : IDisposable
     private const int VkRMenu = 0xA5;
     private const int VkLWin = 0x5B;
     private const int VkRWin = 0x5C;
+    private const int VkF3 = 0x72;
+    private const int VkF4 = 0x73;
     private const int VkF8 = 0x77;
     private const int VkE = 0x45;
+    private const int VkI = 0x49;
+    private const int VkS = 0x53;
     private const int VkV = 0x56;
     private const int VkQ = 0x51;
 
@@ -62,6 +66,14 @@ public sealed class GlobalInputHookService : IDisposable
     public event EventHandler? EmojiPickerRequested;
 
     public event EventHandler? ClipboardTypingRequested;
+
+    public event EventHandler? ClipboardTypingWithInputSourceToggleRequested;
+
+    public event EventHandler? ClipboardTypingCancelRequested;
+
+    public event EventHandler? ScreenshotRequested;
+
+    public event EventHandler? ClipboardImageShareRequested;
 
     public bool IsRunning => keyboardHook != IntPtr.Zero;
 
@@ -173,7 +185,14 @@ public sealed class GlobalInputHookService : IDisposable
 
             if (isDown && IsEmergencyStopChord(virtualKey))
             {
+                suppressedChordKeyUps.Add(virtualKey);
                 EmergencyStopRequested?.Invoke(this, EventArgs.Empty);
+                return 1;
+            }
+
+            if (isDown && IsClipboardTypingCancelChord(virtualKey))
+            {
+                ClipboardTypingCancelRequested?.Invoke(this, EventArgs.Empty);
                 return CallNextHookEx(keyboardHook, nCode, wParam, lParam);
             }
 
@@ -198,10 +217,31 @@ public sealed class GlobalInputHookService : IDisposable
                 return 1;
             }
 
-            if (EnableClipboardTypingShortcut && ShouldCaptureInput() && isDown && IsClipboardTypingChord(virtualKey))
+            if (isDown && IsClipboardTypingChord(virtualKey))
             {
                 suppressedChordKeyUps.Add(virtualKey);
                 ClipboardTypingRequested?.Invoke(this, EventArgs.Empty);
+                return 1;
+            }
+
+            if (isDown && IsClipboardTypingWithInputSourceToggleChord(virtualKey))
+            {
+                suppressedChordKeyUps.Add(virtualKey);
+                ClipboardTypingWithInputSourceToggleRequested?.Invoke(this, EventArgs.Empty);
+                return 1;
+            }
+
+            if (isDown && IsScreenshotChord(virtualKey))
+            {
+                suppressedChordKeyUps.Add(virtualKey);
+                ScreenshotRequested?.Invoke(this, EventArgs.Empty);
+                return 1;
+            }
+
+            if (isDown && IsClipboardImageShareChord(virtualKey))
+            {
+                suppressedChordKeyUps.Add(virtualKey);
+                ClipboardImageShareRequested?.Invoke(this, EventArgs.Empty);
                 return 1;
             }
 
@@ -295,7 +335,17 @@ public sealed class GlobalInputHookService : IDisposable
             return false;
         }
 
-        return IsControlDown() && IsAltDown();
+        return IsControlDown();
+    }
+
+    private bool IsClipboardTypingCancelChord(int virtualKey)
+    {
+        if (virtualKey != VkEscape)
+        {
+            return false;
+        }
+
+        return !IsControlDown();
     }
 
     private bool ShouldCaptureInput()
@@ -345,12 +395,32 @@ public sealed class GlobalInputHookService : IDisposable
 
     private bool IsClipboardTypingChord(int virtualKey)
     {
-        if (virtualKey != VkV)
+        return virtualKey == VkF3;
+    }
+
+    private bool IsClipboardTypingWithInputSourceToggleChord(int virtualKey)
+    {
+        return virtualKey == VkV && IsControlDown() && IsShiftDown();
+    }
+
+    private bool IsScreenshotChord(int virtualKey)
+    {
+        if (virtualKey != VkS)
         {
             return false;
         }
 
-        return IsControlDown() && !IsAltDown();
+        return IsControlDown() && IsAltDown();
+    }
+
+    private bool IsClipboardImageShareChord(int virtualKey)
+    {
+        if (virtualKey == VkF4)
+        {
+            return true;
+        }
+
+        return virtualKey == VkI && IsControlDown() && IsAltDown();
     }
 
     private bool IsControlDown()

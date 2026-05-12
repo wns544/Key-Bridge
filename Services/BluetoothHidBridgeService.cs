@@ -35,6 +35,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
     private GattLocalCharacteristic? absolutePointerInputReportCharacteristic;
     private readonly SemaphoreSlim mouseReportLock = new(1, 1);
     private volatile bool hasKeyboardSubscriber;
+    private volatile bool hasBootKeyboardSubscriber;
     private volatile bool hasMouseSubscriber;
     private const int AbsolutePointerMax = 32767;
     private const int AbsolutePointerCenter = AbsolutePointerMax / 2;
@@ -47,7 +48,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
     public bool IsRunning { get; private set; }
 
-    public bool HasKeyboardSubscriber => hasKeyboardSubscriber;
+    public bool HasKeyboardSubscriber => hasKeyboardSubscriber || hasBootKeyboardSubscriber;
     public bool HasMouseSubscriber => hasMouseSubscriber;
 
     public async Task StartAsync(DeviceProfile targetDevice)
@@ -105,11 +106,20 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
     public async Task SendKeyboardReportAsync(DeviceProfile targetDevice, byte[] report, string description)
     {
+        await SendKeyboardReportAsync(targetDevice, report, description, 15, 0);
+    }
+
+    public async Task SendKeyboardReportAsync(DeviceProfile targetDevice, byte[] report, string description, int holdDelayMs, int releaseDelayMs)
+    {
         if (!IsRunning || inputReportCharacteristic is null) return;
         DiagnosticMessage?.Invoke(this, $"Sending keyboard shortcut [{description}].");
         await NotifyKeyboardReportsAsync(report, "shortcut");
-        await Task.Delay(15);
+        await Task.Delay(holdDelayMs);
         await NotifyKeyboardReportsAsync(HidKeyboardReport.Empty, "shortcut release");
+        if (releaseDelayMs > 0)
+        {
+            await Task.Delay(releaseDelayMs);
+        }
     }
 
     public async Task SendConsumerControlAsync(DeviceProfile targetDevice, ushort usage)
@@ -210,8 +220,8 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         consumerControlInputReportCharacteristic = await CreateConsumerControlInputReportCharacteristicAsync();
         absolutePointerInputReportCharacteristic = await CreateAbsolutePointerInputReportCharacteristicAsync();
 
-        inputReportCharacteristic.SubscribedClientsChanged += (_, _) => { hasKeyboardSubscriber = GetSubscribedClientCount(inputReportCharacteristic, "input report") > 0; };
-        bootKeyboardInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { /* Log optional */ };
+        inputReportCharacteristic.SubscribedClientsChanged += (_, _) => { UpdateKeyboardSubscriberState(); };
+        bootKeyboardInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { UpdateKeyboardSubscriberState(); };
         mouseInputReportCharacteristic.SubscribedClientsChanged += (c, _) => { 
             UpdateMouseSubscriberState();
         };
@@ -232,6 +242,14 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
         hasMouseSubscriber = connected;
         MouseSubscriberChanged?.Invoke(this, connected);
+    }
+
+    private void UpdateKeyboardSubscriberState()
+    {
+        hasKeyboardSubscriber = GetSubscribedClientCount(inputReportCharacteristic, "keyboard input report") > 0;
+        hasBootKeyboardSubscriber = GetSubscribedClientCount(bootKeyboardInputReportCharacteristic, "boot keyboard input report") > 0;
+
+        DiagnosticMessage?.Invoke(this, $"Keyboard subscribers: report={hasKeyboardSubscriber}, boot={hasBootKeyboardSubscriber}.");
     }
 
     private int GetSubscribedClientCount(GattLocalCharacteristic? characteristic, string name)
@@ -356,13 +374,15 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             if (results.Count == 0)
             {
                 if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
+                if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
                 if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
             }
         }
         catch (OperationCanceledException)
         {
-            DiagnosticMessage?.Invoke(this, $"Warning: {name} notification timed out (15ms).");
+            DiagnosticMessage?.Invoke(this, $"Warning: {name} notification timed out (200ms).");
             if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
+            if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
             if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
         }
         catch (Exception ex) { DiagnosticMessage?.Invoke(this, $"Error in {name} notification: {ex.Message}"); }

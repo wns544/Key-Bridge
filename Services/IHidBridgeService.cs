@@ -24,6 +24,8 @@ public interface IHidBridgeService
 
     Task SendKeyboardReportAsync(DeviceProfile targetDevice, byte[] report, string description);
 
+    Task SendKeyboardReportAsync(DeviceProfile targetDevice, byte[] report, string description, int holdDelayMs, int releaseDelayMs);
+
     Task SendConsumerControlAsync(DeviceProfile targetDevice, ushort usage);
 
     Task SendPointerAsync(DeviceProfile targetDevice, int x, int y);

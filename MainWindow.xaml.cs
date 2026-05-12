@@ -16,6 +16,13 @@ namespace KeyboardPadBridge;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
+    private readonly record struct ClipboardTypingToken(bool UsesKoreanInputSource, string Text);
+    private const int ClipboardTypingStartDelayMs = 350;
+    private const int ClipboardCharacterHoldMs = 25;
+    private const int ClipboardCharacterReleaseMs = 15;
+    private const int InputSourceToggleHoldMs = 100;
+    private const int InputSourceToggleSettleMs = 450;
+
     private const int WmMouseMove = 0x0200;
     private const int WmLButtonDown = 0x0201;
     private const int WmLButtonUp = 0x0202;
@@ -24,8 +31,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int WmMButtonDown = 0x0207;
     private const int WmMButtonUp = 0x0208;
     private const int WmInput = 0x00FF;
+    private const int WmHotKey = 0x0312;
     private const int RidInput = 0x10000003;
     private const int RidevInputSink = 0x00000100;
+    private const int HotKeyClipboardText = 3001;
+    private const int HotKeyClipboardImage = 3002;
+    private const int HotKeyClipboardTextFallback = 3003;
+    private const int HotKeyClipboardImageFallback = 3004;
+    private const uint ModAlt = 0x0001;
+    private const uint ModControl = 0x0002;
+    private const uint ModShift = 0x0004;
+    private const uint ModNoRepeat = 0x4000;
     private const int RawInputTypeMouse = 0;
     private const uint MouseEventFLeftUp = 0x0004;
     private const uint MouseEventFRightUp = 0x0010;
@@ -57,6 +73,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int VkLButton = 0x01;
     private const int VkRButton = 0x02;
     private const int VkMButton = 0x04;
+    private const int VkF3 = 0x72;
+    private const int VkF4 = 0x73;
+    private const int VkI = 0x49;
+    private const int VkV = 0x56;
     private const ushort ConsumerMute = 0x00E2;
     private const ushort ConsumerVolumeIncrement = 0x00E9;
     private const ushort ConsumerVolumeDecrement = 0x00EA;
@@ -71,6 +91,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IHidBridgeService bridgeService = new BluetoothHidBridgeService();
     private readonly GlobalInputHookService inputHookService = new();
     private readonly BluetoothCapabilityProbe bluetoothCapabilityProbe = new();
+    private readonly ScreenshotShareService screenshotShareService = new();
     private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Alt+Q");
     private readonly Dictionary<int, CapturedKey> pressedKeys = [];
     private readonly object mouseStateLock = new();
@@ -84,6 +105,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool isMouseSignalEnabled;
     private bool isExitRequested;
     private bool hasShownTrayTip;
+    private bool isClipboardTypingInProgress;
+    private CancellationTokenSource? clipboardTypingCancellation;
     private byte mouseButtons;
     private Forms.NotifyIcon? trayIcon;
     private BridgeStatusToastWindow? bridgeStatusToast;
@@ -99,6 +122,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.MouseSignalToggleRequested += InputHookService_MouseSignalToggleRequested;
         inputHookService.EmojiPickerRequested += InputHookService_EmojiPickerRequested;
         inputHookService.ClipboardTypingRequested += InputHookService_ClipboardTypingRequested;
+        inputHookService.ClipboardTypingWithInputSourceToggleRequested += InputHookService_ClipboardTypingWithInputSourceToggleRequested;
+        inputHookService.ClipboardTypingCancelRequested += InputHookService_ClipboardTypingCancelRequested;
+        inputHookService.ScreenshotRequested += InputHookService_ScreenshotRequested;
+        inputHookService.ClipboardImageShareRequested += InputHookService_ClipboardImageShareRequested;
         bridgeService.DiagnosticMessage += BridgeService_DiagnosticMessage;
         bridgeService.MouseSubscriberChanged += BridgeService_MouseSubscriberChanged;
         inputHookService.SuppressForwardedKeys = false;
@@ -115,6 +142,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DataContext = this;
         AddActivity("시스템", "앱이 준비되었습니다.");
         AddActivity("시스템", "Alt+Q로 브릿지를 시작하거나 중지할 수 있습니다.");
+        _ = InitializeScreenshotShareAsync();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -295,6 +323,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await TypeClipboardTextAsync();
     }
 
+    private async void ScreenshotButton_Click(object sender, RoutedEventArgs e)
+    {
+        await CaptureAndShareScreenshotAsync();
+    }
+
+    private async void ShareClipboardImageButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ShareClipboardImageAsync();
+    }
+
     private void SuppressKeysCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
@@ -437,6 +475,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var windowHandle = new WindowInteropHelper(this).Handle;
         HwndSource.FromHwnd(windowHandle)?.AddHook(WndProc);
         RegisterRawMouseInput(windowHandle);
+        RegisterClipboardHotKeys(windowHandle);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -444,6 +483,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (message == WmInput)
         {
             HandleRawMouseInput(lParam);
+        }
+        else if (message == WmHotKey)
+        {
+            var hotKeyId = wParam.ToInt32();
+            if (hotKeyId == HotKeyClipboardText)
+            {
+                _ = TypeClipboardTextAsync();
+                handled = true;
+            }
+            else if (hotKeyId == HotKeyClipboardImage)
+            {
+                _ = ShareClipboardImageAsync();
+                handled = true;
+            }
+            else if (hotKeyId == HotKeyClipboardTextFallback)
+            {
+                _ = TypeClipboardTextAsync(switchInputSourceFirst: true);
+                handled = true;
+            }
+            else if (hotKeyId == HotKeyClipboardImageFallback)
+            {
+                _ = ShareClipboardImageAsync();
+                handled = true;
+            }
         }
 
         return IntPtr.Zero;
@@ -598,7 +661,36 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void InputHookService_ClipboardTypingRequested(object? sender, EventArgs e)
     {
-        Dispatcher.InvokeAsync(TypeClipboardTextAsync);
+        Dispatcher.InvokeAsync(() => TypeClipboardTextAsync());
+    }
+
+    private void InputHookService_ClipboardTypingWithInputSourceToggleRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(() => TypeClipboardTextAsync(switchInputSourceFirst: true));
+    }
+
+    private void InputHookService_ClipboardTypingCancelRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (!isClipboardTypingInProgress)
+            {
+                return;
+            }
+
+            clipboardTypingCancellation?.Cancel();
+            AddActivity("Clipboard", "Cancel requested by Esc.");
+        });
+    }
+
+    private void InputHookService_ScreenshotRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(CaptureAndShareScreenshotAsync);
+    }
+
+    private void InputHookService_ClipboardImageShareRequested(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(ShareClipboardImageAsync);
     }
 
     private void BridgeService_DiagnosticMessage(object? sender, string message)
@@ -606,38 +698,273 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Dispatcher.InvokeAsync(() => AddActivity("HID", message));
     }
 
-    private async Task TypeClipboardTextAsync()
+    private async Task InitializeScreenshotShareAsync()
     {
+        try
+        {
+            await screenshotShareService.StartAsync();
+            AddActivity("Screenshot", $"Ready: {screenshotShareService.LocalUrl}");
+        }
+        catch (Exception ex)
+        {
+            AddActivity("Screenshot", $"Server failed: {ex.Message}");
+        }
+    }
+
+    private async Task CaptureAndShareScreenshotAsync()
+    {
+        try
+        {
+            var result = await screenshotShareService.CaptureLatestAsync();
+            System.Windows.Clipboard.SetText(result.Url);
+            AddActivity("Screenshot", $"Captured. URL copied: {result.Url}");
+        }
+        catch (Exception ex)
+        {
+            AddActivity("Screenshot", $"Capture failed: {ex.Message}");
+        }
+    }
+
+    private async Task ShareClipboardImageAsync()
+    {
+        try
+        {
+            if (!System.Windows.Clipboard.ContainsImage())
+            {
+                AddActivity("Screenshot", "Clipboard has no image. Use Win+Shift+S first.");
+                return;
+            }
+
+            var image = System.Windows.Clipboard.GetImage();
+            if (image is null)
+            {
+                AddActivity("Screenshot", "Clipboard image could not be read.");
+                return;
+            }
+
+            var result = await screenshotShareService.SaveClipboardImageAsync(image);
+            System.Windows.Clipboard.SetText(result.Url);
+            AddActivity("Screenshot", $"Clipboard image shared. URL copied: {result.Url}");
+        }
+        catch (Exception ex)
+        {
+            AddActivity("Screenshot", $"Clipboard image share failed: {ex.Message}");
+        }
+    }
+
+    private async Task TypeClipboardTextAsync(bool switchInputSourceFirst = false)
+    {
+        if (isClipboardTypingInProgress)
+        {
+            AddActivity("Clipboard", "Clipboard typing is already running; ignored duplicate request.");
+            return;
+        }
+
+        isClipboardTypingInProgress = true;
+        AddActivity("Clipboard", $"Typing requested. bridge={bridgeService.IsRunning}, keyboard={bridgeService.HasKeyboardSubscriber}, mouse={bridgeService.HasMouseSubscriber}, switchInputSourceFirst={switchInputSourceFirst}");
         if (!bridgeService.IsRunning)
         {
             AddActivity("클립보드", "먼저 브릿지를 시작하고 iPad의 텍스트 입력칸을 선택한 뒤 클립보드를 입력하세요.");
+            isClipboardTypingInProgress = false;
             return;
         }
 
         if (!System.Windows.Clipboard.ContainsText())
         {
             AddActivity("클립보드", "PC 클립보드에 텍스트가 없습니다.");
+            isClipboardTypingInProgress = false;
             return;
         }
 
-        var text = System.Windows.Clipboard.GetText();
-        if (string.IsNullOrEmpty(text))
+        var originalText = System.Windows.Clipboard.GetText();
+        AddActivity("Clipboard", $"Clipboard text length={originalText.Length}, preview=\"{CreateClipboardPreview(originalText)}\"");
+        if (string.IsNullOrEmpty(originalText))
         {
             AddActivity("클립보드", "PC 클립보드 텍스트가 비어 있습니다.");
+            isClipboardTypingInProgress = false;
             return;
         }
 
-        if (TryFindUnsupportedClipboardCharacter(text, out var unsupportedCharacter))
+        var text = NormalizeClipboardTextForHidTyping(originalText);
+        if (switchInputSourceFirst)
         {
+            text = PreventGoodNotesAutoNumberedLists(text);
+        }
+
+        if (!string.Equals(originalText, text, StringComparison.Ordinal))
+        {
+            AddActivity("Clipboard", $"Normalized text for HID typing. preview=\"{CreateClipboardPreview(text)}\"");
+        }
+
+        if (!bridgeService.HasKeyboardSubscriber)
+        {
+            AddActivity("Clipboard", "Warning: iPad has not subscribed to keyboard input yet. The app will still try both HID keyboard paths.");
+        }
+
+        var smartTokens = new List<ClipboardTypingToken>();
+        if (switchInputSourceFirst)
+        {
+            if (!TryCreateSmartClipboardTypingTokens(text, out smartTokens, out var smartUnsupportedCharacter))
+            {
+                AddActivity("Clipboard", $"Smart typing unsupported character: '{DescribeClipboardCharacter(smartUnsupportedCharacter)}'.");
+                isClipboardTypingInProgress = false;
+                return;
+            }
+        }
+        else if (TryFindUnsupportedClipboardCharacter(text, out var unsupportedCharacter))
+        {
+            AddActivity("Clipboard", $"Unsupported character: '{DescribeClipboardCharacter(unsupportedCharacter)}'. Korean/emoji Unicode text cannot be typed by the current HID key-map.");
             AddActivity("클립보드", $"중단: 현재 클립보드 입력은 영문/숫자/기본 기호만 안정적으로 지원합니다. 지원하지 않는 문자: '{DescribeClipboardCharacter(unsupportedCharacter)}'");
+            isClipboardTypingInProgress = false;
             return;
         }
 
-        pressedKeys.Clear();
-        await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+        try
+        {
+            using var cancellation = new CancellationTokenSource();
+            clipboardTypingCancellation = cancellation;
 
+            if (switchInputSourceFirst)
+            {
+                await Task.Delay(ClipboardTypingStartDelayMs, cancellation.Token);
+            }
+
+            pressedKeys.Clear();
+            await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+
+            if (switchInputSourceFirst)
+            {
+                var smartTypedCount = await TypeSmartClipboardTokensAsync(smartTokens, cancellation.Token);
+                AddActivity("Clipboard", $"Smart typing finished. typed={smartTypedCount}, tokens={smartTokens.Count}");
+                return;
+            }
+
+            var typedCount = 0;
+            var skippedCount = 0;
+
+            foreach (var character in text)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+
+                if (character == '\r')
+                {
+                    continue;
+                }
+
+                if (!HidKeyboardReport.TryCreateTextInputReport(character, out var report))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                await bridgeService.SendKeyboardReportAsync(activeDevice, report, $"clipboard '{DescribeClipboardCharacter(character)}'", ClipboardCharacterHoldMs, ClipboardCharacterReleaseMs);
+                typedCount++;
+            }
+
+            AddActivity("클립보드", $"iPad로 클립보드 문자 {typedCount}개를 입력했습니다. 지원하지 않아 건너뜀: {skippedCount}개.");
+            AddActivity("Clipboard", $"Typing finished. typed={typedCount}, skipped={skippedCount}");
+        }
+        catch (OperationCanceledException)
+        {
+            pressedKeys.Clear();
+            await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+            AddActivity("Clipboard", "Clipboard typing canceled by Esc.");
+        }
+        finally
+        {
+            clipboardTypingCancellation = null;
+            isClipboardTypingInProgress = false;
+        }
+    }
+
+    private async Task SendIpadInputSourceToggleAsync(CancellationToken cancellationToken = default)
+    {
+        AddActivity("Clipboard", "Sending Ctrl+Space before clipboard typing to switch the iPad hardware keyboard input source.");
+        await bridgeService.SendKeyboardReportAsync(activeDevice, new byte[] { 0x01, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x00 }, "clipboard input source toggle Ctrl+Space", InputSourceToggleHoldMs, 0);
+        await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+        await Task.Delay(InputSourceToggleSettleMs, cancellationToken);
+    }
+
+    private async Task<int> TypeSmartClipboardTokensAsync(IReadOnlyList<ClipboardTypingToken> tokens, CancellationToken cancellationToken)
+    {
+        var initialKoreanInputSource = true;
+        var isKoreanInputSource = initialKoreanInputSource;
         var typedCount = 0;
-        var skippedCount = 0;
+
+        AddActivity("Clipboard", "Smart typing assumes initial iPad input source is Korean.");
+
+        try
+        {
+            foreach (var token in tokens)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (token.UsesKoreanInputSource != isKoreanInputSource)
+                {
+                    await SendIpadInputSourceToggleAsync(cancellationToken);
+                    isKoreanInputSource = token.UsesKoreanInputSource;
+                }
+
+                foreach (var character in token.Text)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (character == '\r')
+                    {
+                        continue;
+                    }
+
+                    if (!HidKeyboardReport.TryCreateTextInputReport(character, out var report))
+                    {
+                        continue;
+                    }
+
+                    await bridgeService.SendKeyboardReportAsync(activeDevice, report, $"smart clipboard '{DescribeClipboardCharacter(character)}'", ClipboardCharacterHoldMs, ClipboardCharacterReleaseMs);
+                    typedCount++;
+                }
+            }
+
+            return typedCount;
+        }
+        finally
+        {
+            if (isKoreanInputSource != initialKoreanInputSource)
+            {
+                await SendIpadInputSourceToggleAsync();
+            }
+        }
+    }
+
+    private static bool TryCreateSmartClipboardTypingTokens(string text, out List<ClipboardTypingToken> tokens, out char unsupportedCharacter)
+    {
+        var resultTokens = new List<ClipboardTypingToken>();
+        tokens = resultTokens;
+        unsupportedCharacter = '\0';
+
+        var builder = new StringBuilder();
+        bool? currentUsesKoreanInputSource = null;
+
+        void Flush()
+        {
+            if (builder.Length == 0 || currentUsesKoreanInputSource is null)
+            {
+                return;
+            }
+
+            resultTokens.Add(new ClipboardTypingToken(currentUsesKoreanInputSource.Value, builder.ToString()));
+            builder.Clear();
+        }
+
+        void Append(bool usesKoreanInputSource, string value)
+        {
+            if (currentUsesKoreanInputSource != usesKoreanInputSource)
+            {
+                Flush();
+                currentUsesKoreanInputSource = usesKoreanInputSource;
+            }
+
+            builder.Append(value);
+        }
 
         foreach (var character in text)
         {
@@ -646,18 +973,178 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 continue;
             }
 
-            if (!HidKeyboardReport.TryCreateTextInputReport(character, out var report))
+            if (TryConvertHangulToDubeolsikKeys(character, out var koreanKeys))
             {
-                skippedCount++;
+                Append(usesKoreanInputSource: true, koreanKeys);
                 continue;
             }
 
-            await bridgeService.SendKeyboardReportAsync(activeDevice, report, $"clipboard '{DescribeClipboardCharacter(character)}'");
-            typedCount++;
-            await Task.Delay(4);
+            if (IsNeutralSmartTypingCharacter(character))
+            {
+                Append(currentUsesKoreanInputSource ?? true, character.ToString());
+                continue;
+            }
+
+            if (HidKeyboardReport.TryCreateTextInputReport(character, out _))
+            {
+                Append(usesKoreanInputSource: false, character.ToString());
+                continue;
+            }
+
+            unsupportedCharacter = character;
+            return false;
         }
 
-        AddActivity("클립보드", $"iPad로 클립보드 문자 {typedCount}개를 입력했습니다. 지원하지 않아 건너뜀: {skippedCount}개.");
+        Flush();
+        return true;
+    }
+
+    private static bool IsNeutralSmartTypingCharacter(char character)
+    {
+        return char.IsWhiteSpace(character)
+            || char.IsDigit(character)
+            || char.IsPunctuation(character)
+            || char.IsSymbol(character);
+    }
+
+    private static bool TryConvertHangulToDubeolsikKeys(char character, out string keys)
+    {
+        string[] initials =
+        {
+            "r", "R", "s", "e", "E", "f", "a", "q", "Q", "t", "T", "d", "w", "W", "c", "z", "x", "v", "g"
+        };
+
+        string[] vowels =
+        {
+            "k", "o", "i", "O", "j", "p", "u", "P", "h", "hk", "ho", "hl", "y", "n", "nj", "np", "nl", "b", "m", "ml", "l"
+        };
+
+        string[] finals =
+        {
+            "", "r", "R", "rt", "s", "sw", "sg", "e", "f", "fr", "fa", "fq", "ft", "fx", "fv", "fg", "a", "q", "qt", "t", "T", "d", "w", "c", "z", "x", "v", "g"
+        };
+
+        var code = character;
+        if (code is >= '\uAC00' and <= '\uD7A3')
+        {
+            var syllableIndex = code - '\uAC00';
+            var initialIndex = syllableIndex / (21 * 28);
+            var vowelIndex = syllableIndex % (21 * 28) / 28;
+            var finalIndex = syllableIndex % 28;
+            keys = initials[initialIndex] + vowels[vowelIndex] + finals[finalIndex];
+            return true;
+        }
+
+        keys = character switch
+        {
+            '\u3131' => "r",
+            '\u3132' => "R",
+            '\u3134' => "s",
+            '\u3137' => "e",
+            '\u3138' => "E",
+            '\u3139' => "f",
+            '\u3141' => "a",
+            '\u3142' => "q",
+            '\u3143' => "Q",
+            '\u3145' => "t",
+            '\u3146' => "T",
+            '\u3147' => "d",
+            '\u3148' => "w",
+            '\u3149' => "W",
+            '\u314A' => "c",
+            '\u314B' => "z",
+            '\u314C' => "x",
+            '\u314D' => "v",
+            '\u314E' => "g",
+            '\u314F' => "k",
+            '\u3150' => "o",
+            '\u3151' => "i",
+            '\u3152' => "O",
+            '\u3153' => "j",
+            '\u3154' => "p",
+            '\u3155' => "u",
+            '\u3156' => "P",
+            '\u3157' => "h",
+            '\u3158' => "hk",
+            '\u3159' => "ho",
+            '\u315A' => "hl",
+            '\u315B' => "y",
+            '\u315C' => "n",
+            '\u315D' => "nj",
+            '\u315E' => "np",
+            '\u315F' => "nl",
+            '\u3160' => "b",
+            '\u3161' => "m",
+            '\u3162' => "ml",
+            '\u3163' => "l",
+            _ => string.Empty
+        };
+
+        return keys.Length > 0;
+    }
+
+    private static string CreateClipboardPreview(string text)
+    {
+        var normalized = text.Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t");
+        return normalized.Length <= 32 ? normalized : normalized[..32] + "...";
+    }
+
+    private static string NormalizeClipboardTextForHidTyping(string text)
+    {
+        return text
+            .Replace("→", "->")
+            .Replace("←", "<-")
+            .Replace("⇒", "=>")
+            .Replace("⇐", "<=")
+            .Replace("↔", "<->")
+            .Replace("“", "\"")
+            .Replace("”", "\"")
+            .Replace("‘", "'")
+            .Replace("’", "'")
+            .Replace("–", "-")
+            .Replace("—", "-")
+            .Replace("…", "...")
+            .Replace("·", "*")
+            .Replace("•", "*");
+    }
+
+    private static string PreventGoodNotesAutoNumberedLists(string text)
+    {
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            lines[index] = ReplaceLeadingNumberedListMarker(lines[index]);
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    private static string ReplaceLeadingNumberedListMarker(string line)
+    {
+        var index = 0;
+        while (index < line.Length && line[index] == ' ')
+        {
+            index++;
+        }
+
+        var digitStart = index;
+        while (index < line.Length && char.IsDigit(line[index]))
+        {
+            index++;
+        }
+
+        if (index == digitStart || index >= line.Length || line[index] != '.')
+        {
+            return line;
+        }
+
+        var nextIndex = index + 1;
+        if (nextIndex < line.Length && !char.IsWhiteSpace(line[nextIndex]))
+        {
+            return line;
+        }
+
+        return line[..index] + ")" + line[(index + 1)..];
     }
 
     private static bool TryFindUnsupportedClipboardCharacter(string text, out char unsupportedCharacter)
@@ -1067,6 +1554,43 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                             : "연결 준비 완료. Alt+Ctrl+Q 또는 연결 버튼을 누르세요.";
     }
 
+    private void RegisterClipboardHotKeys(IntPtr windowHandle)
+    {
+        if (!RegisterHotKey(windowHandle, HotKeyClipboardText, ModNoRepeat, VkF3))
+        {
+            AddActivity("Hotkey", "F3 등록 실패. Fn+F3 또는 클립보드 입력 버튼을 사용하세요.");
+        }
+
+        if (!RegisterHotKey(windowHandle, HotKeyClipboardImage, ModNoRepeat, VkF4))
+        {
+            AddActivity("Hotkey", "F4 등록 실패. Share Image 버튼을 사용하세요.");
+        }
+
+        if (!RegisterHotKey(windowHandle, HotKeyClipboardTextFallback, ModNoRepeat | ModControl | ModShift, VkV))
+        {
+            AddActivity("Hotkey", "Ctrl+Shift+V 등록 실패. 클립보드 입력 버튼을 사용하세요.");
+        }
+
+        if (!RegisterHotKey(windowHandle, HotKeyClipboardImageFallback, ModNoRepeat | ModControl | ModAlt, VkI))
+        {
+            AddActivity("Hotkey", "Ctrl+Alt+I 등록 실패. Share Image 버튼을 사용하세요.");
+        }
+    }
+
+    private void UnregisterClipboardHotKeys()
+    {
+        var windowHandle = new WindowInteropHelper(this).Handle;
+        if (windowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        UnregisterHotKey(windowHandle, HotKeyClipboardText);
+        UnregisterHotKey(windowHandle, HotKeyClipboardImage);
+        UnregisterHotKey(windowHandle, HotKeyClipboardTextFallback);
+        UnregisterHotKey(windowHandle, HotKeyClipboardImageFallback);
+    }
+
     private void ShowBridgeStatusToast(string label, string symbol, bool isConnected)
     {
         bridgeStatusToast?.Close();
@@ -1185,6 +1709,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void Window_Closed(object? sender, EventArgs e)
     {
+        UnregisterClipboardHotKeys();
         trayIcon?.Dispose();
         trayIcon = null;
 
@@ -1193,6 +1718,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             await StopBridgeAsync("앱 종료로 브릿지를 중지했습니다.");
         }
 
+        screenshotShareService.Dispose();
         inputHookService.Dispose();
     }
 
@@ -1268,6 +1794,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, int vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterRawInputDevices(

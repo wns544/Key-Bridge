@@ -48,6 +48,12 @@ public sealed class SimulatedHidBridgeService : IHidBridgeService
         return Task.CompletedTask;
     }
 
+    public Task SendKeyboardReportAsync(DeviceProfile targetDevice, byte[] report, string description, int holdDelayMs, int releaseDelayMs)
+    {
+        Debug.WriteLine($"Keyboard shortcut {description} would be sent to {targetDevice.Name}: {string.Join(" ", report.Select(value => value.ToString("X2")))}; hold={holdDelayMs}ms release={releaseDelayMs}ms.");
+        return Task.CompletedTask;
+    }
+
     public Task SendConsumerControlAsync(DeviceProfile targetDevice, ushort usage)
     {
         Debug.WriteLine($"Consumer usage 0x{usage:X4} would be sent to {targetDevice.Name}.");

@@ -175,7 +175,7 @@ public static class HidKeyboardReport
     private static bool TryCreateAltTabAppSwitcher(IReadOnlyCollection<CapturedKey> keys, byte[] report)
     {
         var hasAlt = keys.Any(key => (GetModifier(key) & (LeftAlt | RightAlt)) != 0);
-        var hasControl = keys.Any(key => (GetModifier(key) & (LeftControl | RightControl)) != 0);
+        var hasControl = keys.Any(IsControlKey);
 
         if (!hasAlt || hasControl)
         {
@@ -213,7 +213,7 @@ public static class HidKeyboardReport
 
     private static bool TryCreateWordNavigation(IReadOnlyCollection<CapturedKey> keys, byte[] report)
     {
-        var hasControl = keys.Any(key => (GetModifier(key) & (LeftControl | RightControl)) != 0);
+        var hasControl = keys.Any(IsControlKey);
         var hasLeft = keys.Any(key => GetUsage(key) == 0x50);
         var hasRight = keys.Any(key => GetUsage(key) == 0x4F);
 
@@ -230,7 +230,7 @@ public static class HidKeyboardReport
 
     private static bool TryCreateWordDeletion(IReadOnlyCollection<CapturedKey> keys, byte[] report)
     {
-        var hasControl = keys.Any(key => (GetModifier(key) & (LeftControl | RightControl)) != 0);
+        var hasControl = keys.Any(IsControlKey);
         var hasBackspace = keys.Any(key => GetUsage(key) == 0x2A);
         var hasDelete = keys.Any(key => GetUsage(key) == 0x4C);
 
@@ -289,7 +289,7 @@ public static class HidKeyboardReport
 
     private static bool TryCreateKeyBridgeShortcut(IReadOnlyCollection<CapturedKey> keys, byte[] report)
     {
-        var hasControl = keys.Any(key => (GetModifier(key) & (LeftControl | RightControl)) != 0);
+        var hasControl = keys.Any(IsControlKey);
         var hasAlt = keys.Any(key => (GetModifier(key) & (LeftAlt | RightAlt)) != 0);
 
         if (!hasControl || !hasAlt)
@@ -320,6 +320,12 @@ public static class HidKeyboardReport
     {
         return key.VirtualKey is 0x15 or 0xA5
             || key.Key is Key.HangulMode or Key.KanaMode or Key.RightAlt;
+    }
+
+    private static bool IsControlKey(CapturedKey key)
+    {
+        return key.VirtualKey is 0x11 or 0xA2 or 0xA3
+            || key.Key is Key.LeftCtrl or Key.RightCtrl;
     }
 
     private static byte GetModifier(CapturedKey capturedKey)

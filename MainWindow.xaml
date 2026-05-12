@@ -190,6 +190,14 @@
                             MinWidth="128"
                             Margin="0,0,8,0"
                             Click="TypeClipboardButton_Click" />
+                    <Button Content="Screenshot"
+                            MinWidth="128"
+                            Margin="0,0,8,0"
+                            Click="ScreenshotButton_Click" />
+                    <Button Content="Share Image"
+                            MinWidth="128"
+                            Margin="0,0,8,0"
+                            Click="ShareClipboardImageButton_Click" />
                     <Button x:Name="MouseTestButton"
                             Content="마우스 테스트"
                             MinWidth="128"
