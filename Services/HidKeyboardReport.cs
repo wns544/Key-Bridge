@@ -75,11 +75,6 @@ public static class HidKeyboardReport
             .Take(6)
             .ToList();
 
-        if (ShouldTranslateControlShortcutToCommand(keys, usages))
-        {
-            modifier = (byte)((modifier & ~(LeftControl | RightControl)) | LeftGui);
-        }
-
         report[0] = modifier;
 
         for (var index = 0; index < usages.Count; index++)
@@ -327,58 +322,22 @@ public static class HidKeyboardReport
             || key.Key is Key.HangulMode or Key.KanaMode or Key.RightAlt;
     }
 
-    private static bool ShouldTranslateControlShortcutToCommand(
-        IReadOnlyCollection<CapturedKey> keys,
-        IReadOnlyCollection<byte> usages)
-    {
-        var hasControl = keys.Any(key => (GetModifier(key) & (LeftControl | RightControl)) != 0);
-        var hasAlt = keys.Any(key => (GetModifier(key) & (LeftAlt | RightAlt)) != 0);
-
-        if (!hasControl || hasAlt)
-        {
-            return false;
-        }
-
-        byte[] windowsStyleShortcutUsages =
-        {
-            0x04, // A: select all
-            0x05, // B: bold
-            0x06, // C: copy
-            0x09, // F: find
-            0x0C, // I: italic
-            0x0F, // L: focus address/search field
-            0x11, // N: new
-            0x13, // P: print
-            0x15, // R: refresh/reload
-            0x16, // S: save
-            0x17, // T: new tab
-            0x18, // U: underline
-            0x19, // V: paste
-            0x1A, // W: close tab/window
-            0x1B, // X: cut
-            0x1C, // Y: redo
-            0x1D, // Z: undo
-        };
-
-        return usages.Any(windowsStyleShortcutUsages.Contains);
-    }
-
     private static byte GetModifier(CapturedKey capturedKey)
     {
         return capturedKey.VirtualKey switch
         {
             0xA0 => LeftShift,
             0xA1 => RightShift,
-            0xA2 => LeftControl,
-            0xA3 => RightControl,
+            0xA2 => LeftGui, // Map Left Control to iPad Command
+            0xA3 => LeftGui, // Map Right Control to iPad Command
             0xA4 => LeftAlt,
             0xA5 => 0x00,
             0x5B => 0x00,
             0x5C => 0x00,
             _ => capturedKey.Key switch
             {
-                Key.LeftCtrl => LeftControl,
-                Key.RightCtrl => RightControl,
+                Key.LeftCtrl => LeftGui, // Map Left Control to iPad Command
+                Key.RightCtrl => LeftGui, // Map Right Control to iPad Command
                 Key.LeftShift => LeftShift,
                 Key.RightShift => RightShift,
                 Key.LeftAlt => LeftAlt,

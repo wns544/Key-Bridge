@@ -7,10 +7,12 @@ namespace KeyboardPadBridge.Services;
 public sealed class SimulatedHidBridgeService : IHidBridgeService
 {
     public event EventHandler<string>? DiagnosticMessage;
+    public event EventHandler<bool>? MouseSubscriberChanged;
 
     public bool IsRunning { get; private set; }
 
     public bool HasKeyboardSubscriber => IsRunning;
+    public bool HasMouseSubscriber => IsRunning;
 
     public Task StartAsync(DeviceProfile targetDevice)
     {
@@ -58,9 +60,9 @@ public sealed class SimulatedHidBridgeService : IHidBridgeService
         return Task.CompletedTask;
     }
 
-    public Task SendMouseReportAsync(DeviceProfile targetDevice, sbyte deltaX, sbyte deltaY, byte buttons, sbyte wheel = 0)
+    public Task SendMouseReportAsync(DeviceProfile targetDevice, sbyte deltaX, sbyte deltaY, byte buttons, sbyte wheel = 0, sbyte hWheel = 0)
     {
-        Debug.WriteLine($"Mouse dx={deltaX}, dy={deltaY}, buttons={buttons}, wheel={wheel} would be sent to {targetDevice.Name}.");
+        Debug.WriteLine($"Mouse dx={deltaX}, dy={deltaY}, buttons={buttons}, wheel={wheel}, hWheel={hWheel} would be sent to {targetDevice.Name}.");
         return Task.CompletedTask;
     }
 }

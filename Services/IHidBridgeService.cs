@@ -6,10 +6,13 @@ namespace KeyboardPadBridge.Services;
 public interface IHidBridgeService
 {
     event EventHandler<string>? DiagnosticMessage;
+    event EventHandler<bool>? MouseSubscriberChanged;
 
     bool IsRunning { get; }
 
     bool HasKeyboardSubscriber { get; }
+
+    bool HasMouseSubscriber { get; }
 
     Task StartAsync(DeviceProfile targetDevice);
 
@@ -25,5 +28,5 @@ public interface IHidBridgeService
 
     Task SendPointerAsync(DeviceProfile targetDevice, int x, int y);
 
-    Task SendMouseReportAsync(DeviceProfile targetDevice, sbyte deltaX, sbyte deltaY, byte buttons, sbyte wheel = 0);
+    Task SendMouseReportAsync(DeviceProfile targetDevice, sbyte deltaX, sbyte deltaY, byte buttons, sbyte wheel = 0, sbyte hWheel = 0);
 }

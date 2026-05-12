@@ -71,9 +71,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IHidBridgeService bridgeService = new BluetoothHidBridgeService();
     private readonly GlobalInputHookService inputHookService = new();
     private readonly BluetoothCapabilityProbe bluetoothCapabilityProbe = new();
-    private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Alt+Ctrl+Q");
+    private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Alt+Q");
     private readonly Dictionary<int, CapturedKey> pressedKeys = [];
     private readonly object mouseStateLock = new();
+    private DateTime lastWheelEvent = DateTime.MinValue;
+    private bool isModifierStickyActive;
     private DateTime lastPointerEvent = DateTime.MinValue;
     private DateTime lastPointerLogEvent = DateTime.MinValue;
     private int pendingMouseDeltaX;
@@ -98,9 +100,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.EmojiPickerRequested += InputHookService_EmojiPickerRequested;
         inputHookService.ClipboardTypingRequested += InputHookService_ClipboardTypingRequested;
         bridgeService.DiagnosticMessage += BridgeService_DiagnosticMessage;
+        bridgeService.MouseSubscriberChanged += BridgeService_MouseSubscriberChanged;
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
-        inputHookService.ShouldCaptureForwardedInput = () => bridgeService.IsRunning && bridgeService.HasKeyboardSubscriber;
+        inputHookService.ShouldCaptureForwardedInput = () => bridgeService.IsRunning && (bridgeService.HasKeyboardSubscriber || bridgeService.HasMouseSubscriber);
         UpdatePointerCapture();
         inputHookService.Start();
         Closing += Window_Closing;
@@ -111,7 +114,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         DataContext = this;
         AddActivity("시스템", "앱이 준비되었습니다.");
-        AddActivity("시스템", "Alt+Ctrl+Q로 브릿지를 시작하거나 중지할 수 있습니다.");
+        AddActivity("시스템", "Alt+Q로 브릿지를 시작하거나 중지할 수 있습니다.");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -156,6 +159,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             await bridgeService.StartAsync(activeDevice);
+            await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
             pressedKeys.Clear();
             ResetMouseState();
             ReleaseLocalMouseButtons();
@@ -192,7 +196,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.ResetPressedKeyState();
         ReleaseLocalModifierKeys();
         ResetMouseState();
-        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0);
+        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
         ReleaseLocalMouseButtons();
         await bridgeService.StopAsync();
 
@@ -313,7 +317,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (!isMouseSignalEnabled && bridgeService.IsRunning)
         {
-            await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0);
+            await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
             ReleaseLocalMouseButtons();
         }
 
@@ -390,6 +394,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             else
             {
                 pressedKeys.Remove(e.VirtualKey);
+                
+                // Modifier release protection during wheeling (Increased to 500ms for extra stability)
+                bool shouldDelayRelease = false;
+                lock (mouseStateLock)
+                {
+                    if (isModifierStickyActive && (DateTime.Now - lastWheelEvent).TotalMilliseconds < 500)
+                    {
+                        shouldDelayRelease = true;
+                    }
+                    else
+                    {
+                        isModifierStickyActive = false;
+                    }
+                }
+
+                if (shouldDelayRelease && (e.VirtualKey is VkControl or VkLControl or VkRControl or VkShift or VkLShift or VkRShift))
+                {
+                    AddActivity("시스템", $"휠 동작 보호: {e.Key} 뗌 지연 중 (0.5초 유지)");
+                    return; 
+                }
             }
 
             await bridgeService.SendKeyboardStateAsync(activeDevice, pressedKeys.Values.ToList());
@@ -467,6 +491,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             deltaX = ScaleMouseDelta(rawMouseInput.DeltaX, MouseScaleX);
             deltaY = ScaleMouseDelta(rawMouseInput.DeltaY, MouseScaleY);
             wheel = ScaleMouseWheel(rawMouseInput.ButtonFlags, rawMouseInput.ButtonData);
+
+            if (wheel != 0)
+            {
+                if ((now - lastWheelEvent).TotalMilliseconds < 15)
+                {
+                    wheel = 0;
+                }
+                else
+                {
+                    lastWheelEvent = now;
+                }
+            }
+
             buttons = mouseButtons;
 
             if (deltaX == 0 && deltaY == 0 && wheel == 0 && rawMouseInput.ButtonFlags == 0)
@@ -501,13 +538,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (bridgeService.IsRunning)
             {
-                await StopBridgeAsync("Alt+Ctrl+Q로 브릿지를 중지했습니다.");
+                await StopBridgeAsync("Alt+Q로 브릿지를 중지했습니다.");
+                return;
             }
-            else
-            {
-                await StartBridgeAsync();
-            }
+
+            await StartBridgeAsync();
         });
+    }
+
+    private void BridgeService_MouseSubscriberChanged(object? sender, bool isConnected)
+    {
+        if (isConnected)
+        {
+            Dispatcher.InvokeAsync(async () =>
+            {
+                ResetMouseState();
+                await Task.Delay(700);
+                for (var attempt = 0; attempt < 3 && bridgeService.IsRunning; attempt++)
+                {
+                    await bridgeService.SendPointerAsync(activeDevice, 50, 50);
+                    await Task.Delay(300);
+                }
+                AddActivity("Mouse", "Mouse connected. Re-applied absolute center pointer position.");
+            });
+        }
     }
 
     private void InputHookService_MouseSignalToggleRequested(object? sender, EventArgs e)
@@ -697,7 +751,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     buttons = mouseButtons;
                 }
 
-                await bridgeService.SendMouseReportAsync(activeDevice, deltaX, deltaY, buttons);
+                await bridgeService.SendMouseReportAsync(activeDevice, deltaX, deltaY, buttons, 0, 0);
                 await Task.Delay(MouseSendIntervalMs);
 
                 if (!bridgeService.IsRunning || !isMouseSignalEnabled)
@@ -724,11 +778,68 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private DateTime lastModifierSyncTime = DateTime.MinValue;
+
     private async Task SendMouseButtonReportAsync(sbyte deltaX, sbyte deltaY, byte buttons, sbyte wheel, bool shouldLog)
     {
         try
         {
-            await bridgeService.SendMouseReportAsync(activeDevice, deltaX, deltaY, buttons, wheel);
+            sbyte hWheel = 0;
+            var shouldConfirmButtonRelease = buttons == 0;
+            if (shouldConfirmButtonRelease)
+            {
+                lock (mouseStateLock)
+                {
+                    pendingMouseDeltaX = 0;
+                    pendingMouseDeltaY = 0;
+                    mouseButtons = 0;
+                    mouseSendLoopRunning = false;
+                }
+            }
+            if (wheel != 0)
+            {
+                var now = DateTime.Now;
+                bool shouldSyncModifier = false;
+                
+                lock (mouseStateLock)
+                {
+                    lastWheelEvent = now;
+                    isModifierStickyActive = true;
+                    
+                    // Only sync every 100ms during continuous scrolling to prevent BLE congestion
+                    if ((now - lastModifierSyncTime).TotalMilliseconds > 100)
+                    {
+                        shouldSyncModifier = true;
+                        lastModifierSyncTime = now;
+                    }
+                }
+
+                if (shouldSyncModifier && (pressedKeys.ContainsKey(VkControl) || pressedKeys.ContainsKey(VkLControl) || pressedKeys.ContainsKey(VkRControl) || 
+                                           pressedKeys.ContainsKey(VkShift) || pressedKeys.ContainsKey(VkLShift) || pressedKeys.ContainsKey(VkRShift)))
+                {
+                    await bridgeService.SendKeyboardStateAsync(activeDevice, pressedKeys.Values.ToList());
+                    await Task.Delay(15); // Increased gap for iPad to process modifier before wheel
+                }
+                
+                // Horizontal Scroll: If Shift is held, move vertical wheel to horizontal wheel
+                if (pressedKeys.ContainsKey(VkShift) || pressedKeys.ContainsKey(VkLShift) || pressedKeys.ContainsKey(VkRShift))
+                {
+                    hWheel = wheel;
+                    wheel = 0;
+                }
+                // Zoom Booster: Triple the wheel delta if Ctrl is held to ensure iPad registers the gesture
+                else if (pressedKeys.ContainsKey(VkControl) || pressedKeys.ContainsKey(VkLControl) || pressedKeys.ContainsKey(VkRControl))
+                {
+                    wheel = (sbyte)Math.Clamp(wheel * 3, sbyte.MinValue, sbyte.MaxValue);
+                }
+            }
+
+            await bridgeService.SendMouseReportAsync(activeDevice, deltaX, deltaY, buttons, wheel, hWheel);
+            if (shouldConfirmButtonRelease)
+            {
+                await Task.Delay(12);
+                await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
+            }
 
             if (shouldLog)
             {
@@ -763,33 +874,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task SendMouseTestPatternAsync()
     {
-        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0);
+        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
 
         for (var index = 0; index < 8; index++)
         {
-            await bridgeService.SendMouseReportAsync(activeDevice, 24, 0, 0);
+            await bridgeService.SendMouseReportAsync(activeDevice, 24, 0, 0, 0, 0);
             await Task.Delay(16);
         }
 
         for (var index = 0; index < 5; index++)
         {
-            await bridgeService.SendMouseReportAsync(activeDevice, 0, 18, 0);
+            await bridgeService.SendMouseReportAsync(activeDevice, 0, 18, 0, 0, 0);
             await Task.Delay(16);
         }
 
         for (var index = 0; index < 8; index++)
         {
-            await bridgeService.SendMouseReportAsync(activeDevice, -24, 0, 0);
+            await bridgeService.SendMouseReportAsync(activeDevice, -24, 0, 0, 0, 0);
             await Task.Delay(16);
         }
 
         for (var index = 0; index < 5; index++)
         {
-            await bridgeService.SendMouseReportAsync(activeDevice, 0, -18, 0);
+            await bridgeService.SendMouseReportAsync(activeDevice, 0, -18, 0, 0, 0);
             await Task.Delay(16);
         }
 
-        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0);
+        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
     }
 
     private static void ReleaseLocalModifierKeys()

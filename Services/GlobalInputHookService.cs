@@ -313,9 +313,6 @@ public sealed class GlobalInputHookService : IDisposable
     private bool IsBridgeToggleChord(int virtualKey)
     {
         if (virtualKey != VkQ
-            && virtualKey != VkControl
-            && virtualKey != VkLControl
-            && virtualKey != VkRControl
             && virtualKey != VkMenu
             && virtualKey != VkLMenu
             && virtualKey != VkRMenu)
@@ -323,7 +320,7 @@ public sealed class GlobalInputHookService : IDisposable
             return false;
         }
 
-        return IsControlDown() && IsAltDown() && IsQDown();
+        return IsAltDown() && IsQDown();
     }
 
     private bool IsMouseSignalToggleChord(int virtualKey)
