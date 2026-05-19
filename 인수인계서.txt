@@ -1,0 +1,254 @@
+# KeyBridge 인수인계서
+
+작성일: 2026-05-17
+작업 폴더: `C:\myProgramWithCodex\keyboard-pad-bridge`
+현재 브랜치: `codex/absolute-pointer-hid`
+GitHub 원격: `https://github.com/wns544/Key-Bridge.git`
+
+## 1. 현재 Git 상태
+
+- 마지막으로 GitHub에 푸시된 커밋:
+  - `8a76ba9 Improve iPad input and clipboard sharing`
+  - 원격 브랜치: `origin/codex/absolute-pointer-hid`
+- 현재 로컬에는 아직 커밋/푸시하지 않은 후속 수정이 있음.
+- `git status -sb` 기준 주요 변경 파일:
+  - `Assets/keybridge-icon-source.png`
+  - `Assets/keybridge-icon.png`
+  - `Assets/keybridge.ico`
+  - `MainWindow.xaml.cs`
+  - `Services/GlobalInputHookService.cs`
+  - untracked: `인수인계서.txt`
+- 중요: GitHub의 `8a76ba9`에는 기본 복붙 기능과 스마트 입력이 들어가 있지만, 이후의 아이콘 실험, `Shift+F3` 충돌 수정, 특수문자 정규화 확장, `Ctrl+Shift+V` 감지 보강은 로컬에만 있음. 새 채팅에서 이어서 작업하면 먼저 이 로컬 변경을 검토/커밋/푸시할지 결정해야 함.
+
+## 2. 현재 설치/실행 상태
+
+- 설치된 최신 EXE 경로:
+  - `C:\Users\wns54\AppData\Local\Programs\KeyBridge\KeyBridge.exe`
+- 로컬 배포 EXE 경로:
+  - `C:\myProgramWithCodex\keyboard-pad-bridge\dist\KeyBridge.exe`
+- 현재 실행 중인 KeyBridge:
+  - PID는 세션마다 달라짐. 마지막 확인 시 `C:\Users\wns54\AppData\Local\Programs\KeyBridge\KeyBridge.exe`에서 실행 중이었음.
+- 시작 메뉴/바탕화면 바로가기는 최신 설치 경로를 보도록 고친 적 있음:
+  - Target: `C:\Users\wns54\AppData\Local\Programs\KeyBridge\KeyBridge.exe`
+  - IconLocation: `C:\Users\wns54\AppData\Local\Programs\KeyBridge\KeyBridge.exe,0`
+
+## 3. 큰 작업 흐름 요약
+
+### 3.1 마우스/포인터 문제
+
+- 최초 문제: iPad 연결 직후 마우스 커서가 중앙으로 갔다가 좌상단으로 튕기는 현상.
+- 원인 후보: 연결 직후 상대좌표 마우스 리포트가 과하게 들어가거나 iPad가 포인터 초기 위치를 캐시/보정하는 문제.
+- 브랜치: `codex/absolute-pointer-hid`
+- 구현 방향:
+  - 절대좌표 HID 리포트를 추가해서 연결 직후 중앙 위치를 한 번 보냄.
+  - 이후 실제 이동/클릭/휠은 기존 상대좌표 마우스 리포트로 처리.
+- 중간 버그:
+  - 절대좌표 HID에 버튼까지 실으면 클릭이 드래그처럼 홀딩되는 문제가 있었음.
+  - 해결: 절대좌표 리포트는 버튼 없는 위치 보정 전용으로만 사용하고, 클릭/드래그는 상대좌표 마우스 리포트로만 처리.
+- 관련 파일:
+  - `Services/BluetoothHidBridgeService.cs`
+  - `Services/IHidBridgeService.cs`
+  - `Services/SimulatedHidBridgeService.cs`
+
+### 3.2 클립보드 텍스트 입력
+
+- 목표: Windows 클립보드의 텍스트를 iPad에 HID 키보드 입력으로 보내기.
+- 기본 입력:
+  - `F3`: 영문/숫자/기본 기호 빠른 입력.
+- 스마트 입력:
+  - `Ctrl+Shift+V`: 한영 혼합 스마트 입력.
+  - iPad 입력 상태는 기본적으로 한글이라고 가정하는 방향으로 조정했음.
+  - 한글 음절은 두벌식 키 시퀀스로 분해해서 입력.
+  - 영어 구간과 한글 구간 사이에서 `Ctrl+Space`로 iPad 입력소스를 전환.
+- 취소:
+  - `Esc`: 진행 중인 클립보드 입력 취소.
+  - `Ctrl+Esc`: 브릿지 긴급 중지.
+- 관련 파일:
+  - `MainWindow.xaml.cs`
+  - `Services/GlobalInputHookService.cs`
+  - `Services/HidKeyboardReport.cs`
+
+### 3.3 한글/영문 입력 상태 관련 한계
+
+- BLE HID만으로는 iPad의 현재 입력 언어 상태가 한글/영어/일본어인지 읽어올 수 없음.
+- iPad는 HID 장치 쪽으로 현재 입력소스 상태를 표준적으로 알려주지 않음.
+- 그래서 현재 방식은 “초기 상태를 가정하고 전환 횟수를 관리”하는 방식임.
+- 현재 사용 규칙:
+  - `Ctrl+Shift+V` 사용 전 iPad 입력기를 한글 상태로 맞추는 것이 가장 안정적.
+- 일본어 입력기가 끼면 `Ctrl+Space` 순환 순서가 꼬일 수 있음. 이 경우 완전 자동 판별은 어려움.
+
+### 3.4 특수문자 정규화
+
+- HID 키보드로 직접 칠 수 없는 유니코드 문자를 ASCII 대체 문자열로 바꾸는 로직을 추가.
+- 예:
+  - `α -> alpha`
+  - `β -> beta`
+  - `π -> pi`
+  - `≤ -> <=`
+  - `≥ -> >=`
+  - `≠ -> !=`
+  - `≈ -> ~=`
+  - `± -> +/-`
+  - `× -> x`
+  - `÷ -> /`
+  - `√ -> sqrt`
+  - `∞ -> infinity`
+  - `² -> ^2`
+  - `₁ -> _1`
+  - `½ -> 1/2`
+  - `→ -> ->`
+  - 스마트 따옴표는 일반 따옴표로 변환.
+- 주의:
+  - 기존 `NormalizeClipboardTextForHidTyping` 함수는 콘솔 인코딩 문제로 문자열이 깨져 보였음.
+  - 새로 `NormalizeClipboardTextForHidTypingSafe` 함수를 추가하고 호출부를 새 함수로 돌렸음.
+- 이 변경은 로컬에만 있고 아직 GitHub에 푸시되지 않았을 가능성이 큼.
+
+### 3.5 GoodNotes 자동 번호 목록 방지
+
+- GoodNotes에서 줄 시작 `1.`, `2.` 같은 패턴을 자동 번호 목록으로 바꾸며 들여쓰기되는 문제가 있었음.
+- 스마트 입력 시 줄 시작 숫자 목록 패턴을 `1)` 형태로 바꿔 자동 목록 트리거를 피하도록 처리.
+- 관련 함수:
+  - `PreventGoodNotesAutoNumberedLists`
+  - `ReplaceLeadingNumberedListMarker`
+
+### 3.6 Ctrl 편집/이동 단축키 복구
+
+- 문제:
+  - `Ctrl+Backspace`, `Ctrl+Left/Right`가 사용자가 기대한 방식대로 동작하지 않았음.
+- 원인:
+  - `GetModifier()`에서 Windows `Ctrl`을 iPad용 `Command`로 바꾸는데, 특수 매핑 판별도 그 변환된 값을 보고 있어서 “Ctrl이 눌렸는지”를 못 알아봄.
+- 해결:
+  - `IsControlKey` 헬퍼를 추가해 원본 Windows Ctrl 키코드 기준으로 판별.
+- 의도된 매핑:
+  - `Ctrl + Left/Right -> iPad Option + Left/Right`
+  - `Ctrl + Shift + Left/Right -> iPad Option + Shift + Left/Right`
+  - `Ctrl + Backspace -> iPad Option + Backspace`
+  - `Ctrl + Delete -> iPad Option + Delete`
+- 관련 파일:
+  - `Services/HidKeyboardReport.cs`
+
+### 3.7 Excel Shift+F3 충돌
+
+- 문제:
+  - Excel에서 `Shift+F3`를 누르려는데 KeyBridge가 `F3` 클립보드 입력으로 먹어버림.
+- 원인:
+  - `F3` 핫키 조건이 modifier 여부와 무관하게 “F3이면 무조건”으로 되어 있었음.
+- 해결:
+  - `F3`은 Ctrl/Alt/Shift가 모두 안 눌린 순수 `F3`일 때만 KeyBridge가 잡도록 변경.
+  - `F4`도 modifier 없는 순수 `F4`일 때만 이미지 공유로 잡도록 변경.
+- 관련 파일:
+  - `Services/GlobalInputHookService.cs`
+- 이 변경은 로컬에만 있고 아직 GitHub에 푸시되지 않았을 가능성이 큼.
+
+### 3.8 이미지 공유/스크린샷 공유
+
+- Windows 스크린샷 또는 클립보드 이미지를 iPad에서 접근할 수 있게 로컬 HTTP 서버를 추가.
+- 관련 파일:
+  - `Services/ScreenshotShareService.cs`
+- UI에 버튼 추가:
+  - `Screenshot`
+  - `Share Image`
+- 단축키:
+  - `F4`: 클립보드 이미지 공유.
+  - `Ctrl+Alt+I`: 이미지 공유 fallback.
+- 동작:
+  - 클립보드 이미지 또는 캡처 이미지를 `%LOCALAPPDATA%\KeyBridge\Screenshots\latest.png`에 저장.
+  - 로컬 네트워크 URL을 Windows 클립보드에 복사.
+
+### 3.9 아이콘 작업
+
+- 사용자 제공 이미지:
+  - `C:\Users\wns54\Downloads\KeyBridge아이콘.png`
+- 첫 시도:
+  - 원본 키캡 이미지를 그대로 `.ico`로 변환.
+  - 문제: 흰 키캡/배경이 작업표시줄에서 흰 네모처럼 보임.
+- 두 번째 시도:
+  - 바깥 흰 배경만 투명화.
+  - 문제: 키캡 자체가 흰색이라 여전히 흰 네모처럼 보임.
+- 세 번째 시도:
+  - 원본에서 검은 `K` 글자만 추출해서 투명 배경 PNG 생성.
+  - 문제: 어두운 작업표시줄에서는 검은 K가 너무 어둡고, 사용자는 여전히 배경처럼 보인다고 느낌.
+- 현재 판단:
+  - 단순 검은 K보다는 “투명 배경 + 밝은 K + 어두운 외곽선 또는 그림자”가 작업표시줄용으로 더 적합.
+- 현재 아이콘 관련 파일:
+  - `Assets/keybridge-icon-source.png`
+  - `Assets/keybridge-icon.png`
+  - `Assets/keybridge.ico`
+- 아이콘 생성 스크립트:
+  - `tools\Create-AppIcon.ps1`
+- 참고:
+  - EXE에서 추출한 아이콘은 모서리 알파가 0으로 확인된 적 있음.
+  - 하지만 Windows 작업표시줄/시작메뉴 아이콘 캐시 또는 작은 크기 아이콘 대비 문제로 계속 이상하게 보일 수 있음.
+
+## 4. 현재 단축키 현황
+
+- `Alt+Q`: 브릿지 시작/중지.
+- `F3`: 영문/숫자/기본기호 빠른 클립보드 입력. 단, Ctrl/Alt/Shift 없이 순수 F3일 때만.
+- `Ctrl+Shift+V`: 한영 혼합 스마트 클립보드 입력.
+- `Esc`: 진행 중인 클립보드 입력 취소.
+- `Ctrl+Esc`: 브릿지 긴급 중지.
+- `F4`: 클립보드 이미지 공유. 단, Ctrl/Alt/Shift 없이 순수 F4일 때만.
+- `Ctrl+Alt+I`: 이미지 공유 fallback.
+- `Ctrl+Alt+E`: iPad 입력 선택/이모지 선택용 `Ctrl+Space` 전송.
+
+## 5. 설치/배포 관련
+
+- `dist` 폴더는 한때 여러 설치 파일/ZIP/IExpress 찌꺼기가 섞여 있었음.
+- 정리 후 의도는 `dist\KeyBridge.exe` 하나만 최신 배포 EXE로 남기는 것.
+- 설치 위치:
+  - `C:\Users\wns54\AppData\Local\Programs\KeyBridge\KeyBridge.exe`
+- 시작 메뉴/바탕화면 바로가기:
+  - Target과 IconLocation을 위 설치 위치로 맞춘 적 있음.
+- Windows 검색/작업표시줄에서 예전 아이콘이 보이면:
+  - 작업표시줄에서 제거.
+  - KeyBridge 종료.
+  - Windows 탐색기 재시작.
+  - Win 키로 KeyBridge 검색 후 실행.
+  - 다시 작업표시줄에 고정.
+
+## 6. 최근 중요 빌드/실행 명령
+
+빌드:
+
+```powershell
+dotnet build
+```
+
+배포 EXE 생성:
+
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o .\dist\publish-temp
+Copy-Item -LiteralPath .\dist\publish-temp\KeyBridge.exe -Destination .\dist\KeyBridge.exe -Force
+Copy-Item -LiteralPath .\dist\KeyBridge.exe -Destination "$env:LOCALAPPDATA\Programs\KeyBridge\KeyBridge.exe" -Force
+Remove-Item -LiteralPath .\dist\publish-temp -Recurse -Force
+```
+
+실행:
+
+```powershell
+Start-Process -FilePath "$env:LOCALAPPDATA\Programs\KeyBridge\KeyBridge.exe"
+```
+
+아이콘 재생성:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Create-AppIcon.ps1
+```
+
+## 7. 다음 채팅에서 우선 확인할 것
+
+1. 현재 로컬 변경을 커밋/푸시할지 결정.
+   - 특히 `MainWindow.xaml.cs`, `Services/GlobalInputHookService.cs`, 아이콘 파일 3개.
+2. 아이콘을 “투명 배경 + 밝은 K + 어두운 외곽선”으로 다시 만드는 것이 좋음.
+   - 현재 검은 K만 있는 버전은 다크 작업표시줄에서 잘 안 보임.
+3. `Ctrl+Shift+V`가 실제 설치본에서 잘 반응하는지 다시 테스트.
+4. `Shift+F3`가 Excel에서 정상 동작하는지 다시 테스트.
+5. 특수문자 정규화가 실제 예시 텍스트에서 잘 동작하는지 테스트.
+   - 예시: `z α/2`, `≤`, `≥`, `→`, 위첨자/아래첨자.
+
+## 8. 사용자 성향/작업 방식 메모
+
+- 사용자는 한국어로 빠르게 피드백하며, 실제 iPad/GoodNotes에서 바로 테스트한다.
+- “된다/안 된다” 피드백이 빠르므로, 변경 후에는 보통 빌드, 설치 경로 복사, 앱 재실행까지 해줘야 한다.
+- 단순 코드 변경만 하고 끝내면 안 되고, 실제 설치본 `C:\Users\wns54\AppData\Local\Programs\KeyBridge\KeyBridge.exe`까지 갱신해야 사용자가 바로 테스트할 수 있다.
+- GitHub에 푸시된 버전과 로컬 설치본 버전이 달라질 수 있으므로, 항상 `git status`, `git log`, 설치 EXE 경로를 함께 확인하는 것이 좋다.

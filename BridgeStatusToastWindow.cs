@@ -19,7 +19,7 @@ internal sealed class BridgeStatusToastWindow : Window
 
     private readonly DispatcherTimer closeTimer;
 
-    public BridgeStatusToastWindow(string label, string symbol, bool isConnected)
+    public BridgeStatusToastWindow(string label, string symbol, bool isConnected, string? statusText = null)
     {
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -30,7 +30,7 @@ internal sealed class BridgeStatusToastWindow : Window
         Focusable = false;
         SizeToContent = SizeToContent.WidthAndHeight;
 
-        Content = CreateContent(label, symbol, isConnected);
+        Content = CreateContent(label, symbol, isConnected, statusText);
 
         Loaded += (_, _) => CenterOnPrimaryScreen();
 
@@ -61,8 +61,16 @@ internal sealed class BridgeStatusToastWindow : Window
         SetWindowLong(handle, GwlExStyle, style | WsExNoActivate | WsExToolWindow);
     }
 
-    private static UIElement CreateContent(string label, string symbol, bool isConnected)
+    private static UIElement CreateContent(string label, string symbol, bool isConnected, string? statusText)
     {
+        var resolvedStatusText = statusText ?? (isConnected ? "연결" : "연결 해제");
+        var foreground = isConnected
+            ? new SolidColorBrush(MediaColor.FromRgb(25, 42, 58))
+            : new SolidColorBrush(MediaColor.FromRgb(110, 110, 110));
+        var background = isConnected
+            ? new SolidColorBrush(MediaColor.FromRgb(250, 250, 250))
+            : new SolidColorBrush(MediaColor.FromRgb(236, 236, 236));
+
         var panel = new StackPanel
         {
             MinWidth = 162,
@@ -74,11 +82,11 @@ internal sealed class BridgeStatusToastWindow : Window
 
         panel.Children.Add(new TextBlock
         {
-            Text = $"{label} {(isConnected ? "연결" : "해제")}",
+            Text = $"{label} {resolvedStatusText}",
             FontFamily = new MediaFontFamily("Segoe UI Variable Text, Segoe UI"),
             FontSize = 14,
             FontWeight = FontWeights.Normal,
-            Foreground = new SolidColorBrush(MediaColor.FromRgb(25, 42, 58)),
+            Foreground = foreground,
             TextAlignment = TextAlignment.Center,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             Margin = new Thickness(18, 0, 18, 20)
@@ -86,7 +94,7 @@ internal sealed class BridgeStatusToastWindow : Window
 
         return new Border
         {
-            Background = new SolidColorBrush(MediaColor.FromRgb(250, 250, 250)),
+            Background = background,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 BlurRadius = 18,
@@ -128,7 +136,7 @@ internal sealed class BridgeStatusToastWindow : Window
 
         if (!isConnected)
         {
-            mark.Children.Add(new System.Windows.Shapes.Line
+            mark.Children.Add(new Line
             {
                 X1 = 18,
                 Y1 = 38,

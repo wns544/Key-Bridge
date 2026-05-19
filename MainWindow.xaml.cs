@@ -106,7 +106,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool isExitRequested;
     private bool hasShownTrayTip;
     private bool isClipboardTypingInProgress;
+    private bool hasShownBridgeConnectedToast;
+    private bool hasShownBridgeConnectionFailureToast;
     private CancellationTokenSource? clipboardTypingCancellation;
+    private CancellationTokenSource? bridgeConnectionToastCancellation;
+    private CancellationTokenSource? mouseSendLoopCancellation;
     private byte mouseButtons;
     private Forms.NotifyIcon? trayIcon;
     private BridgeStatusToastWindow? bridgeStatusToast;
@@ -128,6 +132,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.ClipboardImageShareRequested += InputHookService_ClipboardImageShareRequested;
         bridgeService.DiagnosticMessage += BridgeService_DiagnosticMessage;
         bridgeService.MouseSubscriberChanged += BridgeService_MouseSubscriberChanged;
+        bridgeService.ConnectionStateChanged += BridgeService_ConnectionStateChanged;
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
         inputHookService.ShouldCaptureForwardedInput = () => bridgeService.IsRunning && (bridgeService.HasKeyboardSubscriber || bridgeService.HasMouseSubscriber);
@@ -201,7 +206,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             RemoteDeviceText.Text = "페어링 중입니다. iPad에서 '액세서리'를 찾으세요. 연결 후 이름이 바뀔 수 있습니다.";
             AddActivity("브릿지", "BLE HID 검색을 시작했습니다. iPad에서 먼저 '액세서리'를 선택하세요. 연결 후 이 PC의 블루투스 이름으로 바뀔 수 있습니다.");
             RefreshStatus();
-            ShowBridgeStatusToast("Key Bridge", "iPad", true);
+            BeginBridgeConnectionFeedbackWindow();
         }
         catch (Exception ex)
         {
@@ -214,23 +219,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task StopBridgeAsync(string message)
     {
+        StopMouseCaptureImmediately();
         pressedKeys.Clear();
         await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
         inputHookService.EnableClipboardTypingShortcut = false;
-        inputHookService.SuppressForwardedPointerEvents = false;
-        inputHookService.CapturePointerEvents = false;
         inputHookService.ResetPressedKeyState();
         ReleaseLocalModifierKeys();
-        ResetMouseState();
         await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
         ReleaseLocalMouseButtons();
         await bridgeService.StopAsync();
+        CancelBridgeConnectionFeedback();
+        hasShownBridgeConnectedToast = false;
+        hasShownBridgeConnectionFailureToast = false;
 
         AddActivity("브릿지", message);
         RefreshStatus();
-        ShowBridgeStatusToast("Key Bridge", "iPad", false);
+        ShowBridgeStatusToast("Key Bridge", "iPad", false, "연결 해제");
     }
 
     private void ClearLogButton_Click(object sender, RoutedEventArgs e)
@@ -344,9 +350,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void MouseSignalCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         isMouseSignalEnabled = MouseSignalCheckBox.IsChecked == true;
-        ResetMouseState();
-        inputHookService.SuppressForwardedPointerEvents = bridgeService.IsRunning && isMouseSignalEnabled;
-        UpdatePointerCapture();
+        if (isMouseSignalEnabled)
+        {
+            ResetMouseState();
+            inputHookService.SuppressForwardedPointerEvents = bridgeService.IsRunning;
+            UpdatePointerCapture();
+        }
+        else
+        {
+            StopMouseCaptureImmediately();
+        }
 
         if (isMouseSignalEnabled)
         {
@@ -497,11 +510,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _ = ShareClipboardImageAsync();
                 handled = true;
             }
-            else if (hotKeyId == HotKeyClipboardTextFallback)
-            {
-                _ = TypeClipboardTextAsync(switchInputSourceFirst: true);
-                handled = true;
-            }
             else if (hotKeyId == HotKeyClipboardImageFallback)
             {
                 _ = ShareClipboardImageAsync();
@@ -627,6 +635,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private void BridgeService_ConnectionStateChanged(object? sender, bool isConnected)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (!bridgeService.IsRunning)
+            {
+                return;
+            }
+
+            if (isConnected)
+            {
+                CancelBridgeConnectionFeedback();
+
+                if (!hasShownBridgeConnectedToast)
+                {
+                    hasShownBridgeConnectedToast = true;
+                    hasShownBridgeConnectionFailureToast = false;
+                    ShowBridgeStatusToast("iPad", "iPad", true, "연결");
+                }
+
+                AddActivity("브릿지", "iPad HID 연결이 확인되었습니다.");
+                return;
+            }
+
+            if (hasShownBridgeConnectedToast)
+            {
+                hasShownBridgeConnectedToast = false;
+                ShowBridgeStatusToast("iPad", "iPad", false, "연결 끊김");
+            }
+        });
+    }
+
     private void InputHookService_MouseSignalToggleRequested(object? sender, EventArgs e)
     {
         Dispatcher.InvokeAsync(async () =>
@@ -696,6 +736,54 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void BridgeService_DiagnosticMessage(object? sender, string message)
     {
         Dispatcher.InvokeAsync(() => AddActivity("HID", message));
+    }
+
+    private void BeginBridgeConnectionFeedbackWindow()
+    {
+        CancelBridgeConnectionFeedback();
+        hasShownBridgeConnectedToast = false;
+        hasShownBridgeConnectionFailureToast = false;
+
+        var cancellation = new CancellationTokenSource();
+        bridgeConnectionToastCancellation = cancellation;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(5000, cancellation.Token);
+                if (cancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (!bridgeService.IsRunning
+                        || bridgeService.HasKeyboardSubscriber
+                        || bridgeService.HasMouseSubscriber
+                        || hasShownBridgeConnectedToast
+                        || hasShownBridgeConnectionFailureToast)
+                    {
+                        return;
+                    }
+
+                    hasShownBridgeConnectionFailureToast = true;
+                    ShowBridgeStatusToast("iPad", "iPad", false, "연결 안됨");
+                    AddActivity("브릿지", "iPad가 아직 Bluetooth HID에 연결되지 않았습니다.");
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
+    private void CancelBridgeConnectionFeedback()
+    {
+        bridgeConnectionToastCancellation?.Cancel();
+        bridgeConnectionToastCancellation?.Dispose();
+        bridgeConnectionToastCancellation = null;
     }
 
     private async Task InitializeScreenshotShareAsync()
@@ -785,7 +873,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var text = NormalizeClipboardTextForHidTyping(originalText);
+        var text = NormalizeClipboardTextForHidTypingSafe(originalText);
         if (switchInputSourceFirst)
         {
             text = PreventGoodNotesAutoNumberedLists(text);
@@ -1089,6 +1177,123 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return normalized.Length <= 32 ? normalized : normalized[..32] + "...";
     }
 
+    private static string NormalizeClipboardTextForHidTypingSafe(string text)
+    {
+        return text
+            .Replace("\u00A0", " ")
+            .Replace("\u2000", " ")
+            .Replace("\u2001", " ")
+            .Replace("\u2002", " ")
+            .Replace("\u2003", " ")
+            .Replace("\u2004", " ")
+            .Replace("\u2005", " ")
+            .Replace("\u2006", " ")
+            .Replace("\u2007", " ")
+            .Replace("\u2008", " ")
+            .Replace("\u2009", " ")
+            .Replace("\u200A", " ")
+            .Replace("\u202F", " ")
+            .Replace("\u205F", " ")
+            .Replace("\u3000", " ")
+            .Replace("\u200B", string.Empty)
+            .Replace("\u200C", string.Empty)
+            .Replace("\u200D", string.Empty)
+            .Replace("\uFEFF", string.Empty)
+            .Replace("\u2192", "->")
+            .Replace("\u2190", "<-")
+            .Replace("\u21D2", "=>")
+            .Replace("\u21D0", "<=")
+            .Replace("\u2194", "<->")
+            .Replace("\u2264", "<=")
+            .Replace("\u2265", ">=")
+            .Replace("\u2260", "!=")
+            .Replace("\u2248", "~=")
+            .Replace("\u00B1", "+/-")
+            .Replace("\u2212", "-")
+            .Replace("\u00D7", "x")
+            .Replace("\u00F7", "/")
+            .Replace("\u2217", "*")
+            .Replace("\u221A", "sqrt")
+            .Replace("\u221E", "infinity")
+            .Replace("\u222B", "integral")
+            .Replace("\u2206", "delta")
+            .Replace("\u2202", "partial")
+            .Replace("\u2211", "sum")
+            .Replace("\u2208", "in")
+            .Replace("\u2209", "not in")
+            .Replace("\u2282", "subset")
+            .Replace("\u2283", "superset")
+            .Replace("\u2229", "intersect")
+            .Replace("\u222A", "union")
+            .Replace("\u03B1", "alpha")
+            .Replace("\u03B2", "beta")
+            .Replace("\u03B3", "gamma")
+            .Replace("\u03B4", "delta")
+            .Replace("\u03B5", "epsilon")
+            .Replace("\u03B8", "theta")
+            .Replace("\u03BB", "lambda")
+            .Replace("\u03BC", "mu")
+            .Replace("\u03C0", "pi")
+            .Replace("\u03C1", "rho")
+            .Replace("\u03C3", "sigma")
+            .Replace("\u03C4", "tau")
+            .Replace("\u03C6", "phi")
+            .Replace("\u03C7", "chi")
+            .Replace("\u03C9", "omega")
+            .Replace("\u0391", "Alpha")
+            .Replace("\u0392", "Beta")
+            .Replace("\u0393", "Gamma")
+            .Replace("\u0394", "Delta")
+            .Replace("\u0398", "Theta")
+            .Replace("\u039B", "Lambda")
+            .Replace("\u03A0", "Pi")
+            .Replace("\u03A3", "Sigma")
+            .Replace("\u03A6", "Phi")
+            .Replace("\u03A9", "Omega")
+            .Replace("\u00B2", "^2")
+            .Replace("\u00B3", "^3")
+            .Replace("\u00B9", "^1")
+            .Replace("\u2070", "^0")
+            .Replace("\u2074", "^4")
+            .Replace("\u2075", "^5")
+            .Replace("\u2076", "^6")
+            .Replace("\u2077", "^7")
+            .Replace("\u2078", "^8")
+            .Replace("\u2079", "^9")
+            .Replace("\u207A", "^+")
+            .Replace("\u207B", "^-")
+            .Replace("\u2080", "_0")
+            .Replace("\u2081", "_1")
+            .Replace("\u2082", "_2")
+            .Replace("\u2083", "_3")
+            .Replace("\u2084", "_4")
+            .Replace("\u2085", "_5")
+            .Replace("\u2086", "_6")
+            .Replace("\u2087", "_7")
+            .Replace("\u2088", "_8")
+            .Replace("\u2089", "_9")
+            .Replace("\u00BC", "1/4")
+            .Replace("\u00BD", "1/2")
+            .Replace("\u00BE", "3/4")
+            .Replace("\u201C", "\"")
+            .Replace("\u201D", "\"")
+            .Replace("\u2018", "'")
+            .Replace("\u2019", "'")
+            .Replace("\u2013", "-")
+            .Replace("\u2014", "-")
+            .Replace("\u2026", "...")
+            .Replace("\u00B7", "*")
+            .Replace("\u2022", "*")
+            .Replace("\u25CF", "*")
+            .Replace("\u25CB", "o")
+            .Replace("\u25A0", "*")
+            .Replace("\u25A1", "[]")
+            .Replace("\u2713", "check")
+            .Replace("\u2714", "check")
+            .Replace("\u2717", "x")
+            .Replace("\u2718", "x");
+    }
+
     private static string NormalizeClipboardTextForHidTyping(string text)
     {
         return text
@@ -1191,9 +1396,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private void StopMouseCaptureImmediately()
+    {
+        CancelMouseSendLoop();
+        inputHookService.SuppressForwardedPointerEvents = false;
+        inputHookService.CapturePointerEvents = false;
+        ResetMouseState();
+        ReleaseLocalMouseButtons();
+    }
+
+    private void CancelMouseSendLoop()
+    {
+        mouseSendLoopCancellation?.Cancel();
+        mouseSendLoopCancellation?.Dispose();
+        mouseSendLoopCancellation = null;
+    }
+
     private void QueueMouseReport(sbyte deltaX, sbyte deltaY, byte buttons, bool shouldLog)
     {
         bool shouldStartLoop;
+        CancellationToken token;
 
         lock (mouseStateLock)
         {
@@ -1201,7 +1423,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             pendingMouseDeltaY += deltaY;
             mouseButtons = buttons;
             shouldStartLoop = !mouseSendLoopRunning;
-            mouseSendLoopRunning = true;
+            if (shouldStartLoop)
+            {
+                CancelMouseSendLoop();
+                mouseSendLoopCancellation = new CancellationTokenSource();
+                mouseSendLoopRunning = true;
+            }
+
+            token = mouseSendLoopCancellation?.Token ?? CancellationToken.None;
         }
 
         if (shouldLog)
@@ -1211,16 +1440,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (shouldStartLoop)
         {
-            _ = SendQueuedMouseReportsAsync();
+            _ = SendQueuedMouseReportsAsync(token);
         }
     }
 
-    private async Task SendQueuedMouseReportsAsync()
+    private async Task SendQueuedMouseReportsAsync(CancellationToken cancellationToken)
     {
         try
         {
             while (true)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 sbyte deltaX;
                 sbyte deltaY;
                 byte buttons;
@@ -1239,7 +1469,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 }
 
                 await bridgeService.SendMouseReportAsync(activeDevice, deltaX, deltaY, buttons, 0, 0);
-                await Task.Delay(MouseSendIntervalMs);
+                await Task.Delay(MouseSendIntervalMs, cancellationToken);
 
                 if (!bridgeService.IsRunning || !isMouseSignalEnabled)
                 {
@@ -1252,6 +1482,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                     return;
                 }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            lock (mouseStateLock)
+            {
+                pendingMouseDeltaX = 0;
+                pendingMouseDeltaY = 0;
+                mouseButtons = 0;
+                mouseSendLoopRunning = false;
             }
         }
         catch (Exception ex)
@@ -1275,6 +1515,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var shouldConfirmButtonRelease = buttons == 0;
             if (shouldConfirmButtonRelease)
             {
+                CancelMouseSendLoop();
                 lock (mouseStateLock)
                 {
                     pendingMouseDeltaX = 0;
@@ -1566,11 +1807,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             AddActivity("Hotkey", "F4 등록 실패. Share Image 버튼을 사용하세요.");
         }
 
-        if (!RegisterHotKey(windowHandle, HotKeyClipboardTextFallback, ModNoRepeat | ModControl | ModShift, VkV))
-        {
-            AddActivity("Hotkey", "Ctrl+Shift+V 등록 실패. 클립보드 입력 버튼을 사용하세요.");
-        }
-
         if (!RegisterHotKey(windowHandle, HotKeyClipboardImageFallback, ModNoRepeat | ModControl | ModAlt, VkI))
         {
             AddActivity("Hotkey", "Ctrl+Alt+I 등록 실패. Share Image 버튼을 사용하세요.");
@@ -1587,14 +1823,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         UnregisterHotKey(windowHandle, HotKeyClipboardText);
         UnregisterHotKey(windowHandle, HotKeyClipboardImage);
-        UnregisterHotKey(windowHandle, HotKeyClipboardTextFallback);
         UnregisterHotKey(windowHandle, HotKeyClipboardImageFallback);
     }
 
-    private void ShowBridgeStatusToast(string label, string symbol, bool isConnected)
+    private void ShowBridgeStatusToast(string label, string symbol, bool isConnected, string? statusText = null)
     {
         bridgeStatusToast?.Close();
-        bridgeStatusToast = new BridgeStatusToastWindow(label, symbol, isConnected);
+        bridgeStatusToast = new BridgeStatusToastWindow(label, symbol, isConnected, statusText);
         bridgeStatusToast.Closed += (_, _) => bridgeStatusToast = null;
         bridgeStatusToast.ShowBriefly();
     }

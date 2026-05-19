@@ -37,6 +37,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
     private volatile bool hasKeyboardSubscriber;
     private volatile bool hasBootKeyboardSubscriber;
     private volatile bool hasMouseSubscriber;
+    private volatile bool hasAnySubscriber;
     private const int AbsolutePointerMax = 32767;
     private const int AbsolutePointerCenter = AbsolutePointerMax / 2;
     private const int AbsolutePointerSensitivity = 48;
@@ -45,6 +46,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
     public event EventHandler<string>? DiagnosticMessage;
     public event EventHandler<bool>? MouseSubscriberChanged;
+    public event EventHandler<bool>? ConnectionStateChanged;
 
     public bool IsRunning { get; private set; }
 
@@ -68,11 +70,13 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             finally
             {
                 hasKeyboardSubscriber = false;
+                hasBootKeyboardSubscriber = false;
                 if (hasMouseSubscriber)
                 {
                     hasMouseSubscriber = false;
                     MouseSubscriberChanged?.Invoke(this, false);
                 }
+                UpdateConnectionState();
                 inputReportCharacteristic = null;
                 bootKeyboardInputReportCharacteristic = null;
                 mouseInputReportCharacteristic = null;
@@ -242,6 +246,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
         hasMouseSubscriber = connected;
         MouseSubscriberChanged?.Invoke(this, connected);
+        UpdateConnectionState();
     }
 
     private void UpdateKeyboardSubscriberState()
@@ -250,6 +255,19 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         hasBootKeyboardSubscriber = GetSubscribedClientCount(bootKeyboardInputReportCharacteristic, "boot keyboard input report") > 0;
 
         DiagnosticMessage?.Invoke(this, $"Keyboard subscribers: report={hasKeyboardSubscriber}, boot={hasBootKeyboardSubscriber}.");
+        UpdateConnectionState();
+    }
+
+    private void UpdateConnectionState()
+    {
+        var connected = HasKeyboardSubscriber || HasMouseSubscriber;
+        if (connected == hasAnySubscriber)
+        {
+            return;
+        }
+
+        hasAnySubscriber = connected;
+        ConnectionStateChanged?.Invoke(this, connected);
     }
 
     private int GetSubscribedClientCount(GattLocalCharacteristic? characteristic, string name)
@@ -376,6 +394,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
                 if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
                 if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
                 if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
+                UpdateConnectionState();
             }
         }
         catch (OperationCanceledException)
@@ -384,6 +403,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
             if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
             if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
+            UpdateConnectionState();
         }
         catch (Exception ex) { DiagnosticMessage?.Invoke(this, $"Error in {name} notification: {ex.Message}"); }
     }

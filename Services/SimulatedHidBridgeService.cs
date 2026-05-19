@@ -8,6 +8,7 @@ public sealed class SimulatedHidBridgeService : IHidBridgeService
 {
     public event EventHandler<string>? DiagnosticMessage;
     public event EventHandler<bool>? MouseSubscriberChanged;
+    public event EventHandler<bool>? ConnectionStateChanged;
 
     public bool IsRunning { get; private set; }
 
@@ -18,6 +19,7 @@ public sealed class SimulatedHidBridgeService : IHidBridgeService
     {
         IsRunning = true;
         DiagnosticMessage?.Invoke(this, $"Simulated HID bridge started for {targetDevice.Name}.");
+        ConnectionStateChanged?.Invoke(this, true);
         Debug.WriteLine($"Simulated HID bridge started for {targetDevice.Name}.");
         return Task.CompletedTask;
     }
@@ -26,6 +28,7 @@ public sealed class SimulatedHidBridgeService : IHidBridgeService
     {
         IsRunning = false;
         DiagnosticMessage?.Invoke(this, "Simulated HID bridge stopped.");
+        ConnectionStateChanged?.Invoke(this, false);
         Debug.WriteLine("Simulated HID bridge stopped.");
         return Task.CompletedTask;
     }

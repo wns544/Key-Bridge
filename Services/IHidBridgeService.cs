@@ -7,6 +7,7 @@ public interface IHidBridgeService
 {
     event EventHandler<string>? DiagnosticMessage;
     event EventHandler<bool>? MouseSubscriberChanged;
+    event EventHandler<bool>? ConnectionStateChanged;
 
     bool IsRunning { get; }
 

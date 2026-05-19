@@ -44,6 +44,7 @@ public sealed class GlobalInputHookService : IDisposable
     private readonly LowLevelProc mouseProc;
     private readonly HashSet<int> downVirtualKeys = [];
     private readonly HashSet<int> suppressedChordKeyUps = [];
+    private bool smartClipboardChordActive;
     private IntPtr keyboardHook;
     private IntPtr mouseHook;
 
@@ -176,10 +177,17 @@ public sealed class GlobalInputHookService : IDisposable
             {
                 downVirtualKeys.Add(virtualKey);
             }
+            else
+            {
+                downVirtualKeys.Remove(virtualKey);
+                if (!IsClipboardTypingWithInputSourceToggleChordActive())
+                {
+                    smartClipboardChordActive = false;
+                }
+            }
 
             if (!isDown && suppressedChordKeyUps.Remove(virtualKey))
             {
-                downVirtualKeys.Remove(virtualKey);
                 return 1;
             }
 
@@ -224,9 +232,10 @@ public sealed class GlobalInputHookService : IDisposable
                 return 1;
             }
 
-            if (isDown && IsClipboardTypingWithInputSourceToggleChord(virtualKey))
+            if (isDown && IsClipboardTypingWithInputSourceToggleChordActive() && !smartClipboardChordActive)
             {
                 suppressedChordKeyUps.Add(virtualKey);
+                smartClipboardChordActive = true;
                 ClipboardTypingWithInputSourceToggleRequested?.Invoke(this, EventArgs.Empty);
                 return 1;
             }
@@ -247,21 +256,11 @@ public sealed class GlobalInputHookService : IDisposable
 
             if (ShouldSuppressWindowsKeyShortcut(virtualKey))
             {
-                if (!isDown)
-                {
-                    downVirtualKeys.Remove(virtualKey);
-                }
-
                 return 1;
             }
 
             var key = KeyInterop.KeyFromVirtualKey(virtualKey);
             KeyChanged?.Invoke(this, new GlobalKeyEventArgs(key, virtualKey, isDown));
-
-            if (!isDown)
-            {
-                downVirtualKeys.Remove(virtualKey);
-            }
 
             if (SuppressForwardedKeys && ShouldCaptureInput())
             {
@@ -395,12 +394,18 @@ public sealed class GlobalInputHookService : IDisposable
 
     private bool IsClipboardTypingChord(int virtualKey)
     {
-        return virtualKey == VkF3;
+        return virtualKey == VkF3 && !IsControlDown() && !IsAltDown() && !IsShiftDown();
     }
 
-    private bool IsClipboardTypingWithInputSourceToggleChord(int virtualKey)
+    private bool IsClipboardTypingWithInputSourceToggleChordActive()
     {
-        return virtualKey == VkV && IsControlDown() && IsShiftDown();
+        return IsVDown() && IsControlDown() && IsShiftDown();
+    }
+
+    private bool IsVDown()
+    {
+        return downVirtualKeys.Contains(VkV)
+            || (GetAsyncKeyState(VkV) & 0x8000) != 0;
     }
 
     private bool IsScreenshotChord(int virtualKey)
@@ -417,7 +422,7 @@ public sealed class GlobalInputHookService : IDisposable
     {
         if (virtualKey == VkF4)
         {
-            return true;
+            return !IsControlDown() && !IsAltDown() && !IsShiftDown();
         }
 
         return virtualKey == VkI && IsControlDown() && IsAltDown();
