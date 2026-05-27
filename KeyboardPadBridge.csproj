@@ -21,4 +21,9 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Google.Apis.Docs.v1" Version="1.74.0.4134" />
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.74.0.4135" />
+  </ItemGroup>
+
 </Project>

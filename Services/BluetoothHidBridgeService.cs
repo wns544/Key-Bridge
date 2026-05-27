@@ -17,7 +17,6 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
     private const ushort ProtocolModeUuid = 0x2A4E;
     private const ushort BootKeyboardInputReportUuid = 0x2A22;
     private const ushort BootKeyboardOutputReportUuid = 0x2A32;
-    private const ushort BootMouseInputReportUuid = 0x2A33;
     private const ushort ReportReferenceDescriptorUuid = 0x2908;
     private const byte InputReportId = 1;
     private const byte MouseInputReportId = 2;
@@ -30,10 +29,10 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
     private GattLocalCharacteristic? inputReportCharacteristic;
     private GattLocalCharacteristic? bootKeyboardInputReportCharacteristic;
     private GattLocalCharacteristic? mouseInputReportCharacteristic;
-    private GattLocalCharacteristic? bootMouseInputReportCharacteristic;
     private GattLocalCharacteristic? consumerControlInputReportCharacteristic;
     private GattLocalCharacteristic? absolutePointerInputReportCharacteristic;
     private readonly SemaphoreSlim mouseReportLock = new(1, 1);
+    private CancellationTokenSource? subscriptionMonitorCancellation;
     private volatile bool hasKeyboardSubscriber;
     private volatile bool hasBootKeyboardSubscriber;
     private volatile bool hasMouseSubscriber;
@@ -60,10 +59,12 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         serviceProvider?.StartAdvertising(new GattServiceProviderAdvertisingParameters { IsConnectable = true, IsDiscoverable = true });
         DiagnosticMessage?.Invoke(this, "BLE HID service is advertising.");
         IsRunning = true;
+        StartSubscriptionMonitor();
     }
 
     public async Task StopAsync()
     {
+        StopSubscriptionMonitor();
         if (serviceProvider is not null)
         {
             try { serviceProvider.StopAdvertising(); } catch (Exception ex) { DiagnosticMessage?.Invoke(this, $"Error stopping advertising: {ex.Message}"); }
@@ -80,7 +81,6 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
                 inputReportCharacteristic = null;
                 bootKeyboardInputReportCharacteristic = null;
                 mouseInputReportCharacteristic = null;
-                bootMouseInputReportCharacteristic = null;
                 consumerControlInputReportCharacteristic = null;
                 absolutePointerInputReportCharacteristic = null;
                 serviceProvider = null;
@@ -138,13 +138,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
     public async Task SendPointerAsync(DeviceProfile targetDevice, int x, int y)
     {
-        if (!IsRunning) return;
-
-        absolutePointerX = NormalizeAbsoluteCoordinate(x);
-        absolutePointerY = NormalizeAbsoluteCoordinate(y);
-
-        DiagnosticMessage?.Invoke(this, $"Sending absolute pointer position x={absolutePointerX}, y={absolutePointerY}.");
-        await NotifyAbsolutePointerAsync();
+        await Task.CompletedTask;
     }
 
     public async Task SendMouseReportAsync(DeviceProfile targetDevice, sbyte deltaX, sbyte deltaY, byte buttons, sbyte wheel = 0, sbyte hWheel = 0)
@@ -159,17 +153,15 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         await mouseReportLock.WaitAsync();
         try
         {
-            if (mouseInputReportCharacteristic is not null)
+            var hasReportMouseClient = GetSubscribedClientCount(mouseInputReportCharacteristic, "mouse input report") > 0;
+            if (mouseInputReportCharacteristic is not null && hasReportMouseClient)
             {
-                var report = new byte[] { buttons, unchecked((byte)deltaX), unchecked((byte)deltaY), unchecked((byte)wheel), unchecked((byte)hWheel) };
+                var report = new byte[] { buttons, unchecked((byte)deltaX), unchecked((byte)deltaY), unchecked((byte)wheel) };
                 await SafeNotifyAsync(mouseInputReportCharacteristic, report, "mouse input");
+                return;
             }
 
-            if (bootMouseInputReportCharacteristic is not null)
-            {
-                var bootReport = new byte[] { buttons, unchecked((byte)deltaX), unchecked((byte)deltaY) };
-                await SafeNotifyAsync(bootMouseInputReportCharacteristic, bootReport, "boot mouse");
-            }
+            DiagnosticMessage?.Invoke(this, "Mouse report skipped: no report-mode mouse subscriber.");
         }
         finally
         {
@@ -220,24 +212,54 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         inputReportCharacteristic = await CreateInputReportCharacteristicAsync();
         bootKeyboardInputReportCharacteristic = await CreateBootKeyboardInputReportCharacteristicAsync();
         mouseInputReportCharacteristic = await CreateMouseInputReportCharacteristicAsync();
-        bootMouseInputReportCharacteristic = await CreateBootMouseInputReportCharacteristicAsync();
         consumerControlInputReportCharacteristic = await CreateConsumerControlInputReportCharacteristicAsync();
-        absolutePointerInputReportCharacteristic = await CreateAbsolutePointerInputReportCharacteristicAsync();
-
         inputReportCharacteristic.SubscribedClientsChanged += (_, _) => { UpdateKeyboardSubscriberState(); };
         bootKeyboardInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { UpdateKeyboardSubscriberState(); };
         mouseInputReportCharacteristic.SubscribedClientsChanged += (c, _) => { 
             UpdateMouseSubscriberState();
         };
-        bootMouseInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { /* Log optional */ };
         consumerControlInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { /* Log optional */ };
-        absolutePointerInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { UpdateMouseSubscriberState(); };
+    }
+
+    private void StartSubscriptionMonitor()
+    {
+        StopSubscriptionMonitor();
+        subscriptionMonitorCancellation = new CancellationTokenSource();
+        var token = subscriptionMonitorCancellation.Token;
+
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1000, token);
+                    RefreshSubscriberState(logKeyboardState: false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }, token);
+    }
+
+    private void StopSubscriptionMonitor()
+    {
+        subscriptionMonitorCancellation?.Cancel();
+        subscriptionMonitorCancellation?.Dispose();
+        subscriptionMonitorCancellation = null;
+    }
+
+    private void RefreshSubscriberState(bool logKeyboardState)
+    {
+        UpdateKeyboardSubscriberState(logKeyboardState);
+        UpdateMouseSubscriberState();
     }
 
     private void UpdateMouseSubscriberState()
     {
-        var connected = GetSubscribedClientCount(mouseInputReportCharacteristic, "mouse input report") > 0
-            || GetSubscribedClientCount(absolutePointerInputReportCharacteristic, "absolute pointer input report") > 0;
+        var connected = GetSubscribedClientCount(mouseInputReportCharacteristic, "mouse input report") > 0;
 
         if (connected == hasMouseSubscriber)
         {
@@ -249,12 +271,17 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         UpdateConnectionState();
     }
 
-    private void UpdateKeyboardSubscriberState()
+    private void UpdateKeyboardSubscriberState(bool logState = true)
     {
+        var previousReportSubscriber = hasKeyboardSubscriber;
+        var previousBootSubscriber = hasBootKeyboardSubscriber;
         hasKeyboardSubscriber = GetSubscribedClientCount(inputReportCharacteristic, "keyboard input report") > 0;
         hasBootKeyboardSubscriber = GetSubscribedClientCount(bootKeyboardInputReportCharacteristic, "boot keyboard input report") > 0;
 
-        DiagnosticMessage?.Invoke(this, $"Keyboard subscribers: report={hasKeyboardSubscriber}, boot={hasBootKeyboardSubscriber}.");
+        if (logState || previousReportSubscriber != hasKeyboardSubscriber || previousBootSubscriber != hasBootKeyboardSubscriber)
+        {
+            DiagnosticMessage?.Invoke(this, $"Keyboard subscribers: report={hasKeyboardSubscriber}, boot={hasBootKeyboardSubscriber}.");
+        }
         UpdateConnectionState();
     }
 
@@ -342,20 +369,11 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
     private async Task<GattLocalCharacteristic> CreateMouseInputReportCharacteristicAsync()
     {
         EnsureProvider();
-        var parameters = new GattLocalCharacteristicParameters { CharacteristicProperties = GattCharacteristicProperties.Read | GattCharacteristicProperties.Notify, ReadProtectionLevel = HidProtectionLevel, UserDescription = "Mouse Input Report", StaticValue = ToBuffer(new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00 }) };
+        var parameters = new GattLocalCharacteristicParameters { CharacteristicProperties = GattCharacteristicProperties.Read | GattCharacteristicProperties.Notify, ReadProtectionLevel = HidProtectionLevel, UserDescription = "Mouse Input Report", StaticValue = ToBuffer(new byte[] { 0x00, 0x00, 0x00, 0x00 }) };
         var result = await serviceProvider!.Service.CreateCharacteristicAsync(BluetoothUuidHelper.FromShortId(ReportUuid), parameters);
         ThrowIfBluetoothError(result.Error, "Mouse Input Report");
         var descriptorParameters = new GattLocalDescriptorParameters { ReadProtectionLevel = HidProtectionLevel, StaticValue = ToBuffer(new byte[] { MouseInputReportId, InputReportType }) };
         await result.Characteristic.CreateDescriptorAsync(BluetoothUuidHelper.FromShortId(ReportReferenceDescriptorUuid), descriptorParameters);
-        return result.Characteristic;
-    }
-
-    private async Task<GattLocalCharacteristic> CreateBootMouseInputReportCharacteristicAsync()
-    {
-        EnsureProvider();
-        var parameters = new GattLocalCharacteristicParameters { CharacteristicProperties = GattCharacteristicProperties.Read | GattCharacteristicProperties.Notify, ReadProtectionLevel = HidProtectionLevel, UserDescription = "Boot Mouse Input Report", StaticValue = ToBuffer(new byte[] { 0x00, 0x00, 0x00 }) };
-        var result = await serviceProvider!.Service.CreateCharacteristicAsync(BluetoothUuidHelper.FromShortId(BootMouseInputReportUuid), parameters);
-        ThrowIfBluetoothError(result.Error, "Boot Mouse Input Report");
         return result.Characteristic;
     }
 
@@ -393,7 +411,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             {
                 if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
                 if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
-                if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
+                if (characteristic == mouseInputReportCharacteristic) hasMouseSubscriber = false;
                 UpdateConnectionState();
             }
         }
@@ -402,7 +420,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             DiagnosticMessage?.Invoke(this, $"Warning: {name} notification timed out (200ms).");
             if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
             if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
-            if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
+            if (characteristic == mouseInputReportCharacteristic) hasMouseSubscriber = false;
             UpdateConnectionState();
         }
         catch (Exception ex) { DiagnosticMessage?.Invoke(this, $"Error in {name} notification: {ex.Message}"); }
@@ -432,20 +450,14 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00,
             0x25, 0x01, 0x95, 0x03, 0x75, 0x01, 0x81, 0x02,
             0x95, 0x01, 0x75, 0x05, 0x81, 0x01,
-            0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38, 0x09, 0x3C,
-            0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x02,
+            0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38,
+            0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x03,
             0x81, 0x06,
             0xC0, 0xC0,
             0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01, 0x85, ConsumerControlInputReportId,
             0x15, 0x00, 0x26, 0xFF, 0x03, 0x19, 0x00, 0x2A,
             0xFF, 0x03, 0x75, 0x10, 0x95, 0x01, 0x81, 0x00,
-            0xC0,
-            0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, AbsolutePointerInputReportId,
-            0x09, 0x01, 0xA1, 0x00,
-            0x09, 0x30, 0x09, 0x31,
-            0x15, 0x00, 0x26, 0xFF, 0x7F, 0x75, 0x10, 0x95, 0x02,
-            0x81, 0x02,
-            0xC0, 0xC0
+            0xC0
         };
     }
 

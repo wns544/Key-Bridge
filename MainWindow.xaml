@@ -7,9 +7,9 @@
         mc:Ignorable="d"
         Title="KeyBridge"
         Width="1180"
-        Height="780"
+        Height="720"
         MinWidth="760"
-        MinHeight="640"
+        MinHeight="560"
         Background="{DynamicResource CanvasParchmentBrush}"
         Closed="Window_Closed">
     <Window.Resources>
@@ -37,22 +37,22 @@
         </Style>
 
         <Style x:Key="HeroTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-            <Setter Property="FontSize" Value="52" />
+            <Setter Property="FontSize" Value="40" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="LineHeight" Value="58" />
+            <Setter Property="LineHeight" Value="46" />
             <Setter Property="TextAlignment" Value="Center" />
         </Style>
 
         <Style x:Key="DisplayTitle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-            <Setter Property="FontSize" Value="38" />
+            <Setter Property="FontSize" Value="30" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="LineHeight" Value="43" />
             <Setter Property="TextAlignment" Value="Center" />
         </Style>
 
         <Style x:Key="LeadText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-            <Setter Property="FontSize" Value="20" />
-            <Setter Property="LineHeight" Value="29" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="LineHeight" Value="23" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="TextAlignment" Value="Center" />
         </Style>
@@ -64,9 +64,9 @@
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="MinHeight" Value="42" />
-            <Setter Property="MinWidth" Value="108" />
-            <Setter Property="Padding" Value="28,9" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinWidth" Value="96" />
+            <Setter Property="Padding" Value="18,6" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
             <Setter Property="Background" Value="{StaticResource SurfacePearlBrush}" />
@@ -81,7 +81,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="18"
+                                CornerRadius="14"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
@@ -105,38 +105,82 @@
             </Setter>
         </Style>
 
+        <Style TargetType="ToggleButton">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinWidth" Value="72" />
+            <Setter Property="Padding" Value="18,6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
+            <Setter Property="Background" Value="{StaticResource SurfacePearlBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontFamily" Value="Segoe UI Variable Text, Malgun Gothic, Segoe UI" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource SurfaceDarkBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource SurfaceDarkBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="RenderTransformOrigin" Value="0.5,0.5" />
+                                <Setter TargetName="ButtonBorder" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
-            <Setter Property="MinWidth" Value="126" />
-            <Setter Property="Padding" Value="32,10" />
+            <Setter Property="MinWidth" Value="112" />
+            <Setter Property="Padding" Value="22,7" />
         </Style>
 
         <Style x:Key="SecondaryPillButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="{StaticResource CanvasBrush}" />
             <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
-            <Setter Property="MinWidth" Value="150" />
-            <Setter Property="Padding" Value="30,9" />
+            <Setter Property="MinWidth" Value="128" />
+            <Setter Property="Padding" Value="20,6" />
         </Style>
 
         <Style x:Key="UtilityCard" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource CanvasBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="18" />
-            <Setter Property="Padding" Value="24" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="16" />
         </Style>
 
         <Style x:Key="StatusCard" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource SurfacePearlBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="18" />
-            <Setter Property="Padding" Value="16,12" />
-            <Setter Property="MinWidth" Value="118" />
-            <Setter Property="MinHeight" Value="64" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="MinWidth" Value="104" />
+            <Setter Property="MinHeight" Value="52" />
         </Style>
     </Window.Resources>
 
@@ -150,13 +194,13 @@
                 Background="{StaticResource CanvasBrush}"
                 BorderBrush="{StaticResource HairlineBrush}"
                 BorderThickness="0,0,0,1"
-                Padding="24,14">
+                Padding="16,8">
             <DockPanel LastChildFill="False">
                 <StackPanel DockPanel.Dock="Left"
-                            MinWidth="220"
-                            Margin="0,0,16,0">
+                            MinWidth="180"
+                            Margin="0,0,12,0">
                     <TextBlock Text="KeyBridge"
-                               FontSize="28"
+                               FontSize="22"
                                FontWeight="SemiBold" />
                     <TextBlock Text="PC 키보드 브릿지"
                                Style="{StaticResource NavText}" />
@@ -165,59 +209,114 @@
                 <WrapPanel DockPanel.Dock="Right"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Center"
-                           ItemHeight="44">
-                    <CheckBox x:Name="SuppressKeysCheckBox"
-                              Content="노트북 키 입력 차단"
-                              IsChecked="True"
-                              Margin="0,0,12,0"
-                              VerticalAlignment="Center"
-                              Checked="SuppressKeysCheckBox_Changed"
-                              Unchecked="SuppressKeysCheckBox_Changed" />
-                    <CheckBox x:Name="MouseSignalCheckBox"
-                              Content="마우스 신호"
-                              IsChecked="False"
-                              Margin="0,0,12,0"
-                              VerticalAlignment="Center"
-                              Checked="MouseSignalCheckBox_Changed"
-                              Unchecked="MouseSignalCheckBox_Changed" />
-                    <CheckBox x:Name="StartWithWindowsCheckBox"
-                              Content="Windows 시작 시 자동 실행"
-                              Margin="0,0,12,0"
-                              VerticalAlignment="Center"
-                              Checked="StartWithWindowsCheckBox_Changed"
-                              Unchecked="StartWithWindowsCheckBox_Changed" />
+                           ItemHeight="36">
+                    <Button Content="클립보드 공유"
+                            MinWidth="112"
+                            Margin="0,0,6,0"
+                            Click="ShareClipboardButton_Click" />
                     <Button Content="클립보드 입력"
-                            MinWidth="128"
-                            Margin="0,0,8,0"
+                            MinWidth="112"
+                            Margin="0,0,6,0"
                             Click="TypeClipboardButton_Click" />
-                    <Button Content="Screenshot"
-                            MinWidth="128"
-                            Margin="0,0,8,0"
-                            Click="ScreenshotButton_Click" />
-                    <Button Content="Share Image"
-                            MinWidth="128"
-                            Margin="0,0,8,0"
-                            Click="ShareClipboardImageButton_Click" />
-                    <Button x:Name="MouseTestButton"
-                            Content="마우스 테스트"
-                            MinWidth="128"
-                            Margin="0,0,8,0"
-                            Click="MouseTestButton_Click" />
-                    <Button x:Name="ProbeButton"
-                            Content="진단 실행"
-                            MinWidth="116"
-                            Margin="0,0,8,0"
-                            Click="ProbeButton_Click" />
-                    <Button x:Name="AdvertiseButton"
-                            Content="기기 다시 찾기"
-                            Style="{StaticResource SecondaryPillButton}"
-                            MinWidth="144"
-                            Margin="0,0,8,0"
-                            Click="AdvertiseButton_Click" />
                     <Button x:Name="BridgeToggleButton"
                             Content="연결"
                             Style="{StaticResource PrimaryButton}"
+                            Margin="0,0,6,0"
                             Click="BridgeToggleButton_Click" />
+                    <ToggleButton x:Name="AdvancedMenuButton"
+                                  Content="고급"
+                                  MinHeight="34"
+                                  MinWidth="72"
+                                  Padding="18,6"
+                                  Margin="0,0,6,0"
+                                  VerticalAlignment="Center" />
+                    <Popup PlacementTarget="{Binding ElementName=AdvancedMenuButton}"
+                           Placement="Bottom"
+                           IsOpen="{Binding IsChecked, ElementName=AdvancedMenuButton}"
+                           StaysOpen="False"
+                           AllowsTransparency="True"
+                           HorizontalOffset="-236"
+                           PopupAnimation="Fade">
+                        <Border Background="{StaticResource CanvasBrush}"
+                                BorderBrush="{StaticResource HairlineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="16"
+                                Padding="14"
+                                Margin="0,6,0,0"
+                                Width="308">
+                            <StackPanel>
+                                <TextBlock Text="고급 도구"
+                                           FontWeight="SemiBold"
+                                           FontSize="15"
+                                           Margin="0,0,0,8" />
+                                <UniformGrid Columns="2" Margin="0,0,0,10">
+                                    <CheckBox x:Name="SuppressKeysCheckBox"
+                                              Content="키 입력 차단"
+                                              IsChecked="True"
+                                              Margin="0,0,8,6"
+                                              VerticalAlignment="Center"
+                                              Checked="SuppressKeysCheckBox_Changed"
+                                              Unchecked="SuppressKeysCheckBox_Changed" />
+                                    <CheckBox x:Name="MouseSignalCheckBox"
+                                              Content="마우스 신호"
+                                              IsChecked="False"
+                                              Margin="0,0,0,6"
+                                              VerticalAlignment="Center"
+                                              Checked="MouseSignalCheckBox_Changed"
+                                              Unchecked="MouseSignalCheckBox_Changed" />
+                                    <CheckBox x:Name="StartWithWindowsCheckBox"
+                                              Content="시작 시 실행"
+                                              Margin="0,0,8,0"
+                                              VerticalAlignment="Center"
+                                              Checked="StartWithWindowsCheckBox_Changed"
+                                              Unchecked="StartWithWindowsCheckBox_Changed" />
+                                    <CheckBox x:Name="AutoClipboardShareCheckBox"
+                                              Content="자동 공유"
+                                              IsChecked="True"
+                                              Margin="0"
+                                              VerticalAlignment="Center"
+                                              Checked="AutoClipboardShareCheckBox_Changed"
+                                              Unchecked="AutoClipboardShareCheckBox_Changed" />
+                                </UniformGrid>
+                                <Separator Margin="0,0,0,10" />
+                                <UniformGrid Columns="2">
+                                <Button Content="Screenshot"
+                                        MinWidth="0"
+                                        Margin="0,0,6,6"
+                                        Click="ScreenshotButton_Click" />
+                                <Button Content="이미지 공유"
+                                        MinWidth="0"
+                                        Margin="0,0,0,6"
+                                        Click="ShareClipboardImageButton_Click" />
+                                <Button x:Name="MouseTestButton"
+                                        Content="마우스 테스트"
+                                        MinWidth="0"
+                                        Margin="0,0,6,6"
+                                        Click="MouseTestButton_Click" />
+                                <Button x:Name="ProbeButton"
+                                        Content="진단"
+                                        MinWidth="0"
+                                        Margin="0,0,0,6"
+                                        Click="ProbeButton_Click" />
+                                </UniformGrid>
+                                <Button x:Name="ResetIpadPairingButton"
+                                        Content="iPad 페어링 초기화"
+                                        HorizontalAlignment="Stretch"
+                                        Margin="0,2,0,6"
+                                        Click="ResetIpadPairingButton_Click" />
+                                <Button Content="iPad 복구 안내"
+                                        HorizontalAlignment="Stretch"
+                                        Margin="0,0,0,6"
+                                        Click="ShowIpadRecoveryGuideButton_Click" />
+                                <Button x:Name="AdvertiseButton"
+                                        Content="기기 다시 찾기"
+                                        Style="{StaticResource SecondaryPillButton}"
+                                        HorizontalAlignment="Stretch"
+                                        Margin="0"
+                                        Click="AdvertiseButton_Click" />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </WrapPanel>
             </DockPanel>
         </Border>
@@ -227,14 +326,14 @@
                       HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
                 <Border Background="{StaticResource CanvasBrush}"
-                        Padding="32,70,32,64">
+                        Padding="24,30,24,28">
                     <StackPanel MaxWidth="980"
                                 HorizontalAlignment="Center">
                         <TextBlock Text="노트북 키보드를 iPad까지."
                                    Style="{StaticResource HeroTitle}" />
                         <TextBlock Text="KeyBridge는 Windows 노트북 입력을 Bluetooth 키보드와 마우스처럼 다른 기기에 이어주는 조용한 생산성 도구입니다."
                                    Style="{StaticResource LeadText}"
-                                   Margin="0,14,0,24"
+                                   Margin="0,8,0,16"
                                    MaxWidth="760" />
                         <WrapPanel HorizontalAlignment="Center">
                             <Button Content="연결 / 해제"
@@ -250,36 +349,36 @@
                 </Border>
 
                 <Border Background="{StaticResource CanvasParchmentBrush}"
-                        Padding="32,48">
+                        Padding="24,28">
                     <WrapPanel MaxWidth="1160"
                                HorizontalAlignment="Center"
-                               ItemWidth="540">
+                               ItemWidth="500">
                         <Border Style="{StaticResource UtilityCard}"
-                                Width="520"
-                                MinHeight="590"
-                                Margin="0,0,24,24">
+                                Width="480"
+                                MinHeight="430"
+                                Margin="0,0,18,18">
                             <StackPanel>
                                 <TextBlock Text="현재 상태"
                                            Style="{StaticResource CaptionText}" />
                                 <TextBlock x:Name="ActiveDeviceNameText"
                                            Text="노트북 -> iPad"
-                                           FontSize="38"
+                                           FontSize="30"
                                            FontWeight="SemiBold"
-                                           LineHeight="44"
-                                           Margin="0,12,0,0" />
+                                           LineHeight="36"
+                                           Margin="0,8,0,0" />
                                 <TextBlock x:Name="StatusText"
                                            Text="연결 준비 완료"
-                                           FontSize="28"
+                                           FontSize="22"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryBrush}"
-                                           LineHeight="34"
-                                           Margin="0,4,0,24" />
+                                           LineHeight="28"
+                                           Margin="0,2,0,12" />
 
                                 <Viewbox Stretch="Uniform"
                                          StretchDirection="DownOnly"
                                          HorizontalAlignment="Center"
-                                         MaxWidth="460"
-                                         Margin="0,8,0,26">
+                                         MaxWidth="380"
+                                         Margin="0,0,0,14">
                                     <Grid Width="620" Height="245">
                                         <Grid Width="230"
                                               Height="142"
@@ -361,19 +460,19 @@
                                 </Viewbox>
 
                                 <WrapPanel HorizontalAlignment="Center">
-                                    <Border Style="{StaticResource StatusCard}" Width="118" Margin="0,0,12,12">
+                                    <Border Style="{StaticResource StatusCard}" Width="106" Margin="0,0,10,10">
                                         <StackPanel>
                                             <TextBlock Text="키보드" Style="{StaticResource CaptionText}" />
                                             <TextBlock x:Name="KeyboardStateText" Text="준비됨" FontWeight="SemiBold" />
                                         </StackPanel>
                                     </Border>
-                                    <Border Style="{StaticResource StatusCard}" Width="128" Margin="0,0,12,12">
+                                    <Border Style="{StaticResource StatusCard}" Width="116" Margin="0,0,10,10">
                                         <StackPanel>
                                             <TextBlock Text="블루투스" Style="{StaticResource CaptionText}" />
                                             <TextBlock x:Name="BackendStateText" Text="BLE HID" FontWeight="SemiBold" />
                                         </StackPanel>
                                     </Border>
-                                    <Border Style="{StaticResource StatusCard}" Width="118" Margin="0,0,0,12">
+                                    <Border Style="{StaticResource StatusCard}" Width="106" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="마우스" Style="{StaticResource CaptionText}" />
                                             <TextBlock x:Name="MouseStateText" Text="준비됨" FontWeight="SemiBold" />
@@ -383,226 +482,358 @@
                             </StackPanel>
                         </Border>
 
-                        <StackPanel Width="520">
-                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,22">
+                        <StackPanel Width="480">
+                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,16">
                                 <StackPanel>
                                     <TextBlock Text="빠른 동작"
-                                               FontSize="26"
+                                               FontSize="22"
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="불필요한 화면 전환 없이 빠르게 연결하고 해제합니다."
                                                Style="{StaticResource CaptionText}"
-                                               Margin="0,4,0,20" />
+                                               Margin="0,2,0,12" />
                                     <Button Content="연결 / 해제"
                                             Style="{StaticResource PrimaryButton}"
                                             HorizontalAlignment="Stretch"
                                             Click="BridgeToggleButton_Click" />
                                     <Button Content="클립보드 입력"
                                             HorizontalAlignment="Stretch"
-                                            Margin="0,10,0,0"
+                                            Margin="0,8,0,0"
                                             Click="TypeClipboardButton_Click" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,22">
-                                <StackPanel>
-                                    <TextBlock Text="페어링"
-                                               FontSize="26"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock x:Name="RemoteDeviceText"
-                                               Text="iPad에서 '액세서리'를 찾아 연결하세요. 연결 후에는 이 PC의 블루투스 이름으로 바뀔 수 있습니다."
-                                               Style="{StaticResource CaptionText}"
-                                               Margin="0,4,0,18" />
-                                    <Button Content="기기 다시 찾기"
-                                            Style="{StaticResource SecondaryPillButton}"
+                                    <Button Content="클립보드 공유"
                                             HorizontalAlignment="Stretch"
-                                            Click="AdvertiseButton_Click" />
+                                            Margin="0,8,0,0"
+                                            Click="ShareClipboardButton_Click" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource UtilityCard}"
-                                    Background="{StaticResource SurfaceDarkBrush}">
+                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,16">
                                 <StackPanel>
-                                    <TextBlock Text="트레이 미니"
-                                               Foreground="White"
-                                               FontSize="26"
+                                    <TextBlock Text="iPad 클립보드 주소"
+                                               FontSize="22"
                                                FontWeight="SemiBold" />
-                                    <TextBlock Text="KeyBridge가 조용히 실행 중일 때 빠르게 상태를 확인하는 작은 화면입니다."
-                                               Foreground="{StaticResource MutedDarkBrush}"
-                                               FontSize="14"
-                                               LineHeight="21"
-                                               Margin="0,4,0,20" />
-                                    <Border Background="#1D1D1F"
-                                            BorderBrush="#3A3A3C"
-                                            BorderThickness="1"
-                                            CornerRadius="18"
-                                            Padding="18">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <TextBlock Text="KeyBridge"
-                                                           Foreground="{StaticResource MutedDarkBrush}"
-                                                           FontSize="12" />
-                                                <TextBlock Text="연결 준비 완료"
-                                                           Foreground="White"
-                                                           FontSize="22"
-                                                           FontWeight="SemiBold" />
-                                            </StackPanel>
-                                            <Button Grid.Column="1"
-                                                    Content="열기"
-                                                    MinWidth="78"
-                                                    Padding="18,8" />
-                                        </Grid>
+                                    <TextBlock Text="PC와 iPad가 같은 Wi-Fi나 핫스팟에 있을 때 브라우저에서 여세요. HTTPS는 로컬 인증서 경고가 뜰 수 있습니다."
+                                               Style="{StaticResource CaptionText}"
+                                               Margin="0,2,0,8" />
+                                    <TextBox x:Name="ClipboardUrlTextBox"
+                                             IsReadOnly="True"
+                                             MinHeight="32"
+                                             VerticalContentAlignment="Center"
+                                             Text="서버 준비 중" />
+                                    <TextBlock Text="PIN"
+                                               Style="{StaticResource CaptionText}"
+                                               Margin="0,8,0,3" />
+                                    <TextBox x:Name="ClipboardPinTextBox"
+                                             MinHeight="32"
+                                             VerticalContentAlignment="Center" />
+                                    <UniformGrid Columns="4" Margin="0,8,0,0">
+                                        <Button Content="주소 복사"
+                                                MinWidth="0"
+                                                Padding="10,6"
+                                                Margin="0,0,6,0"
+                                                Click="CopyClipboardUrlButton_Click" />
+                                        <Button Content="주소 새로고침"
+                                                MinWidth="0"
+                                                Padding="10,6"
+                                                Margin="0,0,6,0"
+                                                Click="RefreshClipboardUrlButton_Click" />
+                                        <Button Content="PIN 적용"
+                                                MinWidth="0"
+                                                Padding="10,6"
+                                                Margin="0,0,6,0"
+                                                Click="ApplyClipboardPinButton_Click" />
+                                        <Button Content="새 토큰/PIN"
+                                                MinWidth="0"
+                                                Padding="10,6"
+                                                Margin="0"
+                                                Click="RegenerateClipboardSecurityButton_Click" />
+                                    </UniformGrid>
+                                </StackPanel>
+                            </Border>
+
+                            <Expander Header="고급 도구" Margin="0,0,0,16">
+                                <StackPanel Margin="0,8,0,0">
+                                    <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="페어링"
+                                                       FontSize="20"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock x:Name="RemoteDeviceText"
+                                                       Text="iPad에서 '액세서리'를 찾아 연결하세요. 연결 후에는 이 PC의 블루투스 이름으로 바뀔 수 있습니다."
+                                                       Style="{StaticResource CaptionText}"
+                                                       Margin="0,2,0,10" />
+                                            <Button Content="기기 다시 찾기"
+                                                    Style="{StaticResource SecondaryPillButton}"
+                                                    HorizontalAlignment="Stretch"
+                                                    Click="AdvertiseButton_Click" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Style="{StaticResource UtilityCard}"
+                                            Background="{StaticResource SurfaceDarkBrush}">
+                                        <StackPanel>
+                                            <TextBlock Text="트레이 미니"
+                                                       Foreground="White"
+                                                       FontSize="20"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="KeyBridge가 조용히 실행 중일 때 빠르게 상태를 확인하는 작은 화면입니다."
+                                                       Foreground="{StaticResource MutedDarkBrush}"
+                                                       FontSize="14"
+                                                       LineHeight="21"
+                                                       Margin="0,2,0,10" />
+                                            <Border Background="#1D1D1F"
+                                                    BorderBrush="#3A3A3C"
+                                                    BorderThickness="1"
+                                                    CornerRadius="14"
+                                                    Padding="12">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="KeyBridge"
+                                                                   Foreground="{StaticResource MutedDarkBrush}"
+                                                                   FontSize="12" />
+                                                        <TextBlock Text="연결 준비 완료"
+                                                                   Foreground="White"
+                                                                   FontSize="18"
+                                                                   FontWeight="SemiBold" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1"
+                                                            Content="열기"
+                                                            MinWidth="78"
+                                                            Padding="18,8" />
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
                                     </Border>
                                 </StackPanel>
-                            </Border>
+                            </Expander>
                         </StackPanel>
                     </WrapPanel>
                 </Border>
 
                 <Border Background="{StaticResource CanvasBrush}"
-                        Padding="32,56">
-                    <StackPanel MaxWidth="1160"
-                                HorizontalAlignment="Center">
+                        Padding="24,34">
+                        <StackPanel MaxWidth="1160"
+                                    HorizontalAlignment="Center">
                         <StackPanel MaxWidth="760"
-                                    Margin="0,0,0,28">
+                                    Margin="0,0,0,18">
                             <TextBlock Text="설정"
-                                       FontSize="34"
+                                       FontSize="28"
                                        FontWeight="SemiBold" />
                             <TextBlock Text="Windows 키보드 감각을 최대한 유지하면서 iPad에 자연스럽게 전달되도록 조정합니다."
                                        Style="{StaticResource CaptionText}"
-                                       Margin="0,10,0,0" />
+                                       Margin="0,6,0,0" />
+                            <Expander Header="고급 설정" Margin="0,12,0,0">
+                                <StackPanel>
                             <Border Background="{StaticResource CanvasParchmentBrush}"
                                     BorderBrush="{StaticResource HairlineBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="18"
-                                    Padding="18"
-                                    Margin="0,22,0,0">
+                                    CornerRadius="14"
+                                    Padding="14"
+                                    Margin="0,0,0,12">
                                 <StackPanel>
                                     <TextBlock Text="단축키"
                                                FontWeight="SemiBold"
                                                FontSize="16" />
-                                    <TextBlock Text="Alt + Ctrl + Q: 연결 / 해제"
+                                    <TextBlock Text="Alt + Q: 브릿지 시작 / 중지"
                                                Style="{StaticResource CaptionText}"
-                                               Margin="0,8,0,0" />
+                                               Margin="0,6,0,0" />
                                     <TextBlock Text="Ctrl + F8: 마우스 신호 켜기 / 끄기"
                                                Style="{StaticResource CaptionText}" />
                                     <TextBlock Text="Ctrl + Alt + E: 이모티콘 / 입력 선택"
                                                Style="{StaticResource CaptionText}" />
                                     <TextBlock Text="Ctrl + Alt + Esc: 긴급 중지"
                                                Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="F3: 클립보드 텍스트 입력"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="Ctrl + Shift + V: 스마트 입력으로 클립보드 텍스트 입력"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="F4 / Ctrl + Alt + I: 이미지 공유"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="F5: iPad 현재 창 새로고침"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="Ctrl + Alt + S: 스크린샷 공유"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="Esc: 클립보드 입력 취소"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBlock Text="Ctrl + Shift + Esc: 로컬 작업 관리자 열기"
+                                               Style="{StaticResource CaptionText}" />
                                 </StackPanel>
                             </Border>
-                        </StackPanel>
 
                         <WrapPanel>
-                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,20,20">
+                            <Border Style="{StaticResource UtilityCard}" Width="340" Margin="0,0,14,14">
                                 <StackPanel>
                                     <TextBlock Text="노트북 입력"
-                                               FontSize="24"
+                                               FontSize="20"
                                                FontWeight="SemiBold" />
                                     <CheckBox x:Name="SuppressKeysCheckBoxSettings"
                                               Content="브릿지 중 노트북 키 입력 차단"
                                               IsChecked="{Binding IsChecked, ElementName=SuppressKeysCheckBox}"
-                                              Margin="0,14,0,8" />
+                                              Margin="0,10,0,6" />
                                     <TextBlock Text="iPad로 입력을 보내는 동안 노트북에도 중복 입력되지 않도록 막습니다."
                                                Style="{StaticResource CaptionText}" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,0,20">
+                            <Border Style="{StaticResource UtilityCard}" Width="340" Margin="0,0,14,14">
                                 <StackPanel>
                                     <TextBlock Text="마우스"
-                                               FontSize="24"
+                                               FontSize="20"
                                                FontWeight="SemiBold" />
                                     <CheckBox x:Name="MouseSignalCheckBoxSettings"
                                               Content="마우스 신호 보내기"
                                               IsChecked="{Binding IsChecked, ElementName=MouseSignalCheckBox}"
-                                              Margin="0,14,0,8" />
+                                              Margin="0,10,0,6" />
                                     <TextBlock x:Name="MouseSignalSummaryText"
                                                Text="켜짐"
                                                FontWeight="SemiBold"
-                                               Margin="0,0,0,8" />
+                                               Margin="0,0,0,6" />
                                     <TextBlock Text="마우스 이동, 클릭, 휠 입력을 iPad 포인터로 전달합니다."
                                                Style="{StaticResource CaptionText}" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,20,20">
+                            <Border Style="{StaticResource UtilityCard}" Width="340" Margin="0,0,14,14">
                                 <StackPanel>
                                     <TextBlock Text="시작"
-                                               FontSize="24"
+                                               FontSize="20"
                                                FontWeight="SemiBold" />
                                     <CheckBox x:Name="StartWithWindowsCheckBoxSettings"
                                               Content="Windows 시작 시 자동 실행"
                                               IsChecked="{Binding IsChecked, ElementName=StartWithWindowsCheckBox}"
-                                              Margin="0,14,0,8" />
+                                              Margin="0,10,0,6" />
                                     <TextBlock Text="Windows가 시작될 때 KeyBridge를 조용히 실행합니다. 필요할 때 트레이에서 다시 열 수 있습니다."
                                                Style="{StaticResource CaptionText}" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource UtilityCard}" Width="360" Margin="0,0,0,20">
+                            <Border Style="{StaticResource UtilityCard}" Width="340" Margin="0,0,14,14">
+                                <StackPanel>
+                                    <TextBlock Text="클립보드 공유"
+                                               FontSize="20"
+                                               FontWeight="SemiBold" />
+                                    <CheckBox x:Name="AutoClipboardShareCheckBoxSettings"
+                                              Content="클립보드 변경 시 자동 공유"
+                                              IsChecked="{Binding IsChecked, ElementName=AutoClipboardShareCheckBox}"
+                                              Margin="0,10,0,6" />
+                                    <TextBlock Text="텍스트, 이미지, 파일을 iPad의 /clipboard 페이지로 자동 갱신합니다."
+                                               Style="{StaticResource CaptionText}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource UtilityCard}" Width="694" Margin="0,0,14,14">
+                                <StackPanel>
+                                    <TextBlock Text="Google Docs 최신 텍스트"
+                                               FontSize="20"
+                                               FontWeight="SemiBold" />
+                                    <CheckBox x:Name="GoogleDocsSyncCheckBox"
+                                              Content="텍스트 클립보드를 지정 문서에 덮어쓰기"
+                                              Margin="0,10,0,8"
+                                              Checked="GoogleDocsSyncCheckBox_Changed"
+                                              Unchecked="GoogleDocsSyncCheckBox_Changed" />
+                                    <TextBlock Text="Google OAuth Desktop client JSON"
+                                               Style="{StaticResource CaptionText}" />
+                                    <DockPanel Margin="0,4,0,8">
+                                        <Button Content="찾기"
+                                                DockPanel.Dock="Right"
+                                                MinWidth="86"
+                                                Margin="8,0,0,0"
+                                                Click="BrowseGoogleClientSecretsButton_Click" />
+                                        <TextBox x:Name="GoogleClientSecretsPathTextBox"
+                                                 MinHeight="32"
+                                                 VerticalContentAlignment="Center" />
+                                    </DockPanel>
+                                    <TextBlock Text="Google Docs 문서 URL 또는 ID"
+                                               Style="{StaticResource CaptionText}" />
+                                    <TextBox x:Name="GoogleDocsDocumentTextBox"
+                                             MinHeight="36"
+                                             Margin="0,4,0,8"
+                                             VerticalContentAlignment="Center" />
+                                    <WrapPanel>
+                                        <Button Content="설정 저장"
+                                                MinWidth="108"
+                                                Margin="0,0,8,8"
+                                                Click="SaveGoogleDocsSettingsButton_Click" />
+                                        <Button x:Name="TestGoogleDocsButton"
+                                                Content="로그인 / 연결 확인"
+                                                MinWidth="162"
+                                                Margin="0,0,8,8"
+                                                Click="TestGoogleDocsButton_Click" />
+                                    </WrapPanel>
+                                    <TextBlock x:Name="GoogleDocsStatusText"
+                                               Text="동기화 꺼짐"
+                                               FontWeight="SemiBold"
+                                               Margin="0,4,0,6" />
+                                    <TextBlock Text="문서는 최신 텍스트 하나만 유지합니다. 이미지와 파일은 기존 /clipboard 페이지로 공유합니다."
+                                               Style="{StaticResource CaptionText}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource UtilityCard}" Width="340" Margin="0,0,0,14">
                                 <StackPanel>
                                     <TextBlock Text="진단"
-                                               FontSize="24"
+                                               FontSize="20"
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="Bluetooth HID 상태를 확인하고 페어링 광고를 다시 시작합니다."
                                                Style="{StaticResource CaptionText}"
-                                               Margin="0,8,0,16" />
+                                               Margin="0,6,0,10" />
                                     <WrapPanel>
                                         <Button Content="진단 실행"
                                                 MinWidth="116"
-                                                Margin="0,0,8,8"
+                                                Margin="0,0,6,6"
                                                 Click="ProbeButton_Click" />
                                         <Button Content="기기 다시 찾기"
                                                 Style="{StaticResource SecondaryPillButton}"
-                                                MinWidth="142"
-                                                Margin="0,0,0,8"
+                                                MinWidth="126"
+                                                Margin="0,0,0,6"
                                                 Click="AdvertiseButton_Click" />
                                     </WrapPanel>
                                 </StackPanel>
                             </Border>
                         </WrapPanel>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
                 <Border Background="{StaticResource CanvasParchmentBrush}"
-                        Padding="32,48,32,64">
+                        Padding="24,30,24,38">
                     <Border Style="{StaticResource UtilityCard}"
                             MaxWidth="1160"
                             HorizontalAlignment="Center">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="260" />
+                                <RowDefinition Height="220" />
                             </Grid.RowDefinitions>
 
                             <DockPanel Grid.Row="0"
                                        LastChildFill="True"
-                                       Margin="0,0,0,18">
+                                       Margin="0,0,0,12">
                                 <WrapPanel DockPanel.Dock="Right"
                                            Margin="16,0,0,8">
                                     <Button Content="로그 복사"
-                                            MinWidth="118"
-                                            Padding="28,9"
-                                            Margin="0,0,8,8"
+                                            MinWidth="104"
+                                            Padding="18,6"
+                                            Margin="0,0,6,6"
                                             Click="CopyLogsButton_Click" />
                                     <Button Content="로그 지우기"
-                                            MinWidth="124"
-                                            Padding="28,9"
-                                            Margin="0,0,0,8"
+                                            MinWidth="108"
+                                            Padding="18,6"
+                                            Margin="0,0,0,6"
                                             Click="ClearLogButton_Click" />
                                 </WrapPanel>
                                 <StackPanel>
                                     <TextBlock Text="입력 로그"
-                                               FontSize="24"
+                                               FontSize="20"
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="동작 기록은 보이되, 브릿지 사용을 방해하지 않게 정리했습니다."
                                                Style="{StaticResource CaptionText}"
-                                               Margin="0,4,0,0" />
+                                               Margin="0,2,0,0" />
                                 </StackPanel>
                             </DockPanel>
 
@@ -616,7 +847,7 @@
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate DataType="{x:Type models:ActivityEvent}">
-                                        <Grid Margin="10,8">
+                                        <Grid Margin="8,5">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="76" />
                                                 <ColumnDefinition Width="96" />

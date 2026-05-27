@@ -247,11 +247,12 @@ public static class HidKeyboardReport
     private static bool TryCreateIpadFunctionShortcut(IReadOnlyCollection<CapturedKey> keys, byte[] report)
     {
         var hasF1 = keys.Any(key => GetUsage(key) == 0x3A);
+        var hasF5 = keys.Any(key => GetUsage(key) == 0x3E);
         var hasF9 = keys.Any(key => GetUsage(key) == 0x42);
         var hasF10 = keys.Any(key => GetUsage(key) == 0x43);
         var hasF11 = keys.Any(key => GetUsage(key) == 0x44);
 
-        if (!hasF1 && !hasF9 && !hasF10 && !hasF11)
+        if (!hasF1 && !hasF5 && !hasF9 && !hasF10 && !hasF11)
         {
             return false;
         }
@@ -260,6 +261,13 @@ public static class HidKeyboardReport
         {
             report[0] = LeftGui;
             report[2] = 0x0B; // Command+H: go to Home screen.
+            return true;
+        }
+
+        if (hasF5)
+        {
+            report[0] = LeftGui;
+            report[2] = 0x15; // Command+R: refresh current page/window on iPadOS.
             return true;
         }
 

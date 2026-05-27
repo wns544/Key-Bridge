@@ -2,9 +2,12 @@ using KeyboardPadBridge.Models;
 using KeyboardPadBridge.Services;
 using System.IO;
 using System.ComponentModel;
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Windows.Devices.Bluetooth;
+using Windows.Devices.Enumeration;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
@@ -32,6 +35,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int WmMButtonUp = 0x0208;
     private const int WmInput = 0x00FF;
     private const int WmHotKey = 0x0312;
+    private const int WmClipboardUpdate = 0x031D;
     private const int RidInput = 0x10000003;
     private const int RidevInputSink = 0x00000100;
     private const int HotKeyClipboardText = 3001;
@@ -82,9 +86,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const ushort ConsumerVolumeDecrement = 0x00EA;
     private const ushort ConsumerBrowserBack = 0x0224;
     private const ushort ConsumerBrowserForward = 0x0225;
-    private const double MouseScaleX = 0.8;
-    private const double MouseScaleY = 0.8;
-    private const int MouseSendIntervalMs = 8;
+    private const double MouseScaleX = 0.95;
+    private const double MouseScaleY = 0.95;
+    private const int MouseSendIntervalMs = 5;
+    private const int MouseDragStartSettleMs = 55;
+    private const int MouseDragKeepAliveIntervalMs = 28;
+    private const int MouseDragConfirmIntervalMs = 30;
+    private const int MouseQueueCoalesceAfter = 4;
+    private const int MouseMaxQueuedReports = 12;
     private const string RunRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunRegistryName = "KeyBridge";
 
@@ -92,6 +101,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly GlobalInputHookService inputHookService = new();
     private readonly BluetoothCapabilityProbe bluetoothCapabilityProbe = new();
     private readonly ScreenshotShareService screenshotShareService = new();
+    private readonly GoogleDocsClipboardService googleDocsClipboardService = new();
     private readonly DeviceProfile activeDevice = new("BLE HID Peer", "Bluetooth HID", "Alt+Q");
     private readonly Dictionary<int, CapturedKey> pressedKeys = [];
     private readonly object mouseStateLock = new();
@@ -99,10 +109,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool isModifierStickyActive;
     private DateTime lastPointerEvent = DateTime.MinValue;
     private DateTime lastPointerLogEvent = DateTime.MinValue;
-    private int pendingMouseDeltaX;
-    private int pendingMouseDeltaY;
+    private DateTime lastAutoClipboardShare = DateTime.MinValue;
+    private readonly Queue<QueuedMouseReport> pendingMouseReports = [];
+    private bool pendingMouseForceReport;
+    private byte activeDragButtons;
+    private DateTime lastDragConfirmReport = DateTime.MinValue;
     private bool mouseSendLoopRunning;
     private bool isMouseSignalEnabled;
+    private bool isBridgeInputEnabled;
+    private bool isAutoClipboardShareEnabled;
+    private bool isAutoClipboardShareInProgress;
+    private bool isGoogleDocsSyncInProgress;
+    private bool isLoadingGoogleDocsSettings;
+    private bool isClipboardUrlRefreshQueued;
     private bool isExitRequested;
     private bool hasShownTrayTip;
     private bool isClipboardTypingInProgress;
@@ -119,6 +138,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         LoadWindowIcon();
+        googleDocsClipboardService.Load();
 
         inputHookService.KeyChanged += InputHookService_KeyChanged;
         inputHookService.EmergencyStopRequested += InputHookService_EmergencyStopRequested;
@@ -135,14 +155,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         bridgeService.ConnectionStateChanged += BridgeService_ConnectionStateChanged;
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
-        inputHookService.ShouldCaptureForwardedInput = () => bridgeService.IsRunning && (bridgeService.HasKeyboardSubscriber || bridgeService.HasMouseSubscriber);
+        inputHookService.ShouldCaptureForwardedInput = () => isBridgeInputEnabled && bridgeService.IsRunning;
         UpdatePointerCapture();
         inputHookService.Start();
         Closing += Window_Closing;
         StateChanged += Window_StateChanged;
+        NetworkChange.NetworkAddressChanged += NetworkChange_NetworkAddressChanged;
         InitializeTrayIcon();
         StartWithWindowsCheckBox.IsChecked = IsStartWithWindowsEnabled();
         MouseSignalCheckBox.IsChecked = true;
+        AutoClipboardShareCheckBox.IsChecked = true;
+        isAutoClipboardShareEnabled = true;
+        LoadGoogleDocsSettingsIntoUi();
 
         DataContext = this;
         AddActivity("시스템", "앱이 준비되었습니다.");
@@ -155,13 +179,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void BridgeToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        if (bridgeService.IsRunning)
-        {
-            await StopBridgeAsync("브릿지를 중지했습니다.");
-            return;
-        }
-
-        await StartBridgeAsync();
+        await ToggleBridgeAsync("버튼");
     }
 
     private async void AdvertiseButton_Click(object sender, RoutedEventArgs e)
@@ -174,7 +192,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (bridgeService.IsRunning)
             {
-                await StopBridgeAsync("기기 다시 찾기를 위해 기존 BLE HID 세션을 중지했습니다.");
+                await StopBridgeAsync("기기 다시 찾기를 위해 기존 BLE HID 세션을 중지했습니다.", stopService: true);
                 await Task.Delay(350);
             }
 
@@ -191,7 +209,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         try
         {
-            await bridgeService.StartAsync(activeDevice);
+            if (!bridgeService.IsRunning)
+            {
+                await bridgeService.StartAsync(activeDevice);
+            }
+
+            isBridgeInputEnabled = true;
             await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
             pressedKeys.Clear();
             ResetMouseState();
@@ -199,7 +222,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
             inputHookService.AlwaysSuppressWindowsKeyShortcuts = true;
             inputHookService.EnableClipboardTypingShortcut = false;
-            inputHookService.SuppressForwardedPointerEvents = isMouseSignalEnabled;
+            inputHookService.SuppressForwardedPointerEvents = isBridgeInputEnabled && bridgeService.IsRunning && isMouseSignalEnabled;
             UpdatePointerCapture();
 
             BackendStateText.Text = "BLE HID";
@@ -217,26 +240,55 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async Task StopBridgeAsync(string message)
+    private async Task StopBridgeAsync(string message, bool stopService = false)
     {
         StopMouseCaptureImmediately();
         pressedKeys.Clear();
-        await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+        isBridgeInputEnabled = false;
+        if (bridgeService.IsRunning)
+        {
+            await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+        }
         inputHookService.SuppressForwardedKeys = false;
         inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
         inputHookService.EnableClipboardTypingShortcut = false;
         inputHookService.ResetPressedKeyState();
         ReleaseLocalModifierKeys();
-        await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
+        if (bridgeService.IsRunning)
+        {
+            await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
+        }
         ReleaseLocalMouseButtons();
-        await bridgeService.StopAsync();
+        if (stopService)
+        {
+            await bridgeService.StopAsync();
+        }
         CancelBridgeConnectionFeedback();
         hasShownBridgeConnectedToast = false;
         hasShownBridgeConnectionFailureToast = false;
 
         AddActivity("브릿지", message);
         RefreshStatus();
-        ShowBridgeStatusToast("Key Bridge", "iPad", false, "연결 해제");
+        ShowBridgeStatusToast("Key Bridge", "iPad", false, stopService ? "연결 해제" : "입력 해제");
+    }
+
+    private async Task ToggleBridgeAsync(string source)
+    {
+        if (!isBridgeInputEnabled)
+        {
+            await StartBridgeAsync();
+            return;
+        }
+
+        await StopBridgeAsync($"{source}: 브릿지를 중지했습니다.");
+    }
+
+    private async Task RestartBridgeAsync(string message)
+    {
+        AddActivity("브릿지", message);
+        await StopBridgeAsync("오래된 BLE HID 세션을 정리했습니다.", stopService: true);
+        await Task.Delay(350);
+        await StartBridgeAsync();
     }
 
     private void ClearLogButton_Click(object sender, RoutedEventArgs e)
@@ -302,6 +354,132 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private async void ResetIpadPairingButton_Click(object sender, RoutedEventArgs e)
+    {
+        var confirm = System.Windows.MessageBox.Show(
+            this,
+            "Windows에 저장된 iPad Bluetooth 페어링을 제거합니다.\n\n진행 후 iPad Bluetooth 화면에서 Hansung/액세서리를 다시 눌러 연결하세요.",
+            "iPad 페어링 초기화",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        ResetIpadPairingButton.IsEnabled = false;
+        AddActivity("Bluetooth", "Windows에 저장된 iPad 페어링 초기화를 시작합니다.");
+
+        try
+        {
+            if (bridgeService.IsRunning)
+            {
+                await StopBridgeAsync("페어링 초기화를 위해 BLE HID 서비스를 중지했습니다.", stopService: true);
+                await Task.Delay(500);
+            }
+
+            var removedCount = await UnpairIpadDevicesAsync();
+            AddActivity("Bluetooth", removedCount > 0
+                ? $"iPad 페어링 {removedCount}개를 제거했습니다. iPad에서 Hansung/액세서리를 다시 선택하세요."
+                : "Windows에서 제거할 iPad 페어링을 찾지 못했습니다. iPad 쪽 '이 기기 지우기'가 필요할 수 있습니다.");
+            OpenBluetoothSettings();
+
+            await StartBridgeAsync();
+        }
+        catch (Exception ex)
+        {
+            AddActivity("Bluetooth", $"iPad 페어링 초기화 실패: {ex.GetType().Name}: {ex.Message}");
+            BackendStateText.Text = "초기화 실패";
+            RefreshStatus();
+        }
+        finally
+        {
+            ResetIpadPairingButton.IsEnabled = true;
+        }
+    }
+
+    private void ShowIpadRecoveryGuideButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowIpadRecoveryGuide();
+    }
+
+    private void ShowIpadRecoveryGuide()
+    {
+        const string guide =
+            "iPad Bluetooth 캐시가 꼬였을 때의 최종 복구 순서입니다.\n\n" +
+            "1. iPad에서 설정 > Bluetooth로 들어갑니다.\n" +
+            "2. Hansung 옆의 ⓘ 버튼을 누릅니다.\n" +
+            "3. '이 기기 지우기'를 선택합니다.\n" +
+            "4. 5~10초 정도 기다립니다.\n" +
+            "5. KeyBridge에서 '기기 다시 찾기'를 누릅니다.\n" +
+            "6. iPad Bluetooth 목록에서 '액세서리' 또는 'Hansung'을 다시 선택합니다.\n\n" +
+            "이 과정은 iPad 안에 저장된 BLE HID 캐시를 지우는 절차라서, Windows 앱만으로 완전히 대체하기 어렵습니다.";
+
+        System.Windows.MessageBox.Show(
+            this,
+            guide,
+            "iPad 연결 복구 안내",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void OpenBluetoothSettings()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ms-settings:bluetooth",
+                UseShellExecute = true
+            });
+            AddActivity("Bluetooth", "Windows Bluetooth 설정창을 열었습니다.");
+        }
+        catch (Exception ex)
+        {
+            AddActivity("Bluetooth", $"Bluetooth 설정창 열기 실패: {ex.Message}");
+        }
+    }
+
+    private async Task<int> UnpairIpadDevicesAsync()
+    {
+        var removedCount = 0;
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectors = new[]
+        {
+            BluetoothDevice.GetDeviceSelectorFromPairingState(true),
+            BluetoothLEDevice.GetDeviceSelectorFromPairingState(true)
+        };
+
+        foreach (var selector in selectors)
+        {
+            var devices = await DeviceInformation.FindAllAsync(selector);
+            foreach (var device in devices)
+            {
+                if (!seenIds.Add(device.Id) || !LooksLikeIpad(device.Name) || !device.Pairing.IsPaired)
+                {
+                    continue;
+                }
+
+                AddActivity("Bluetooth", $"페어링 제거 시도: {device.Name}");
+                var result = await device.Pairing.UnpairAsync();
+                AddActivity("Bluetooth", $"페어링 제거 결과: {device.Name}, {result.Status}");
+                if (result.Status is DeviceUnpairingResultStatus.Unpaired or DeviceUnpairingResultStatus.AlreadyUnpaired)
+                {
+                    removedCount++;
+                }
+            }
+        }
+
+        return removedCount;
+    }
+
+    private static bool LooksLikeIpad(string? name)
+    {
+        return !string.IsNullOrWhiteSpace(name)
+            && name.Contains("iPad", StringComparison.OrdinalIgnoreCase);
+    }
+
     private async void MouseTestButton_Click(object sender, RoutedEventArgs e)
     {
         MouseTestButton.IsEnabled = false;
@@ -339,6 +517,46 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await ShareClipboardImageAsync();
     }
 
+    private async void ShareClipboardTextButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ShareClipboardTextAsync();
+    }
+
+    private async void ShareClipboardButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ShareClipboardAsync();
+    }
+
+    private void CopyClipboardUrlButton_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyClipboardPin();
+        RefreshClipboardUrlText();
+        System.Windows.Clipboard.SetText(ClipboardUrlTextBox.Text);
+        AddActivity("Clipboard", $"Clipboard URL copied: {ClipboardUrlTextBox.Text}");
+    }
+
+    private void RefreshClipboardUrlButton_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyClipboardPin();
+        RefreshClipboardUrlText();
+        AddActivity("Clipboard", $"Clipboard URL refreshed: {ClipboardUrlTextBox.Text}");
+    }
+
+    private void ApplyClipboardPinButton_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyClipboardPin();
+        AddActivity("Clipboard", "Clipboard PIN applied.");
+    }
+
+    private void RegenerateClipboardSecurityButton_Click(object sender, RoutedEventArgs e)
+    {
+        screenshotShareService.SetSharePin(string.Empty);
+        screenshotShareService.RegenerateAccessToken();
+        ClipboardPinTextBox.Text = screenshotShareService.SharePin;
+        RefreshClipboardUrlText();
+        AddActivity("Clipboard", "Clipboard token and PIN regenerated.");
+    }
+
     private void SuppressKeysCheckBox_Changed(object sender, RoutedEventArgs e)
     {
         inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
@@ -353,7 +571,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (isMouseSignalEnabled)
         {
             ResetMouseState();
-            inputHookService.SuppressForwardedPointerEvents = bridgeService.IsRunning;
+            inputHookService.SuppressForwardedPointerEvents = isBridgeInputEnabled && bridgeService.IsRunning;
             UpdatePointerCapture();
         }
         else
@@ -373,7 +591,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         MouseSignalSummaryText.Text = isMouseSignalEnabled ? "켜짐" : "꺼짐";
-        MouseStateText.Text = bridgeService.IsRunning
+        MouseStateText.Text = isBridgeInputEnabled
             ? isMouseSignalEnabled ? "연결됨" : "꺼짐"
             : "준비됨";
         AddActivity("시스템", isMouseSignalEnabled
@@ -404,11 +622,76 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private void AutoClipboardShareCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        isAutoClipboardShareEnabled = AutoClipboardShareCheckBox.IsChecked == true;
+        AddActivity("Clipboard", isAutoClipboardShareEnabled
+            ? $"Auto clipboard share enabled. Open {screenshotShareService.ClipboardUrl} on iPad."
+            : "Auto clipboard share disabled.");
+    }
+
+    private void BrowseGoogleClientSecretsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Google OAuth client JSON 선택",
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            GoogleClientSecretsPathTextBox.Text = dialog.FileName;
+        }
+    }
+
+    private void SaveGoogleDocsSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SaveGoogleDocsSettingsFromUi();
+        AddActivity("GoogleDocs", "Settings saved.");
+    }
+
+    private async void TestGoogleDocsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SaveGoogleDocsSettingsFromUi();
+        TestGoogleDocsButton.IsEnabled = false;
+
+        try
+        {
+            AddActivity("GoogleDocs", "Opening Google sign-in if needed...");
+            var title = await googleDocsClipboardService.TestConnectionAsync();
+            GoogleDocsStatusText.Text = $"연결됨: {title}";
+            AddActivity("GoogleDocs", $"Connected: {title}");
+        }
+        catch (Exception ex)
+        {
+            GoogleDocsStatusText.Text = "연결 실패";
+            AddActivity("GoogleDocs", $"Connection failed: {ex.Message}");
+        }
+        finally
+        {
+            TestGoogleDocsButton.IsEnabled = true;
+        }
+    }
+
+    private void GoogleDocsSyncCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (isLoadingGoogleDocsSettings)
+        {
+            return;
+        }
+
+        SaveGoogleDocsSettingsFromUi();
+        AddActivity("GoogleDocs", GoogleDocsSyncCheckBox.IsChecked == true
+            ? "Latest text sync enabled."
+            : "Latest text sync disabled.");
+    }
+
     private void InputHookService_KeyChanged(object? sender, GlobalKeyEventArgs e)
     {
         Dispatcher.InvokeAsync(async () =>
         {
-            if (!bridgeService.IsRunning)
+            if (!bridgeService.IsRunning || !isBridgeInputEnabled)
             {
                 return;
             }
@@ -487,6 +770,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var windowHandle = new WindowInteropHelper(this).Handle;
         HwndSource.FromHwnd(windowHandle)?.AddHook(WndProc);
+        _ = AddClipboardFormatListener(windowHandle);
         RegisterRawMouseInput(windowHandle);
         RegisterClipboardHotKeys(windowHandle);
     }
@@ -496,6 +780,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (message == WmInput)
         {
             HandleRawMouseInput(lParam);
+        }
+        else if (message == WmClipboardUpdate)
+        {
+            QueueAutoClipboardShare();
         }
         else if (message == WmHotKey)
         {
@@ -522,7 +810,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void HandleRawMouseInput(IntPtr rawInputHandle)
     {
-        if (!bridgeService.IsRunning || !isMouseSignalEnabled)
+        if (!ShouldForwardMouseInput())
         {
             return;
         }
@@ -591,7 +879,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (rawMouseInput.ButtonFlags != 0)
         {
-            _ = SendMouseButtonReportAsync(deltaX, deltaY, buttons, wheel, shouldLog);
+            if (wheel != 0)
+            {
+                _ = SendMouseButtonReportAsync(deltaX, deltaY, buttons, wheel, shouldLog);
+                return;
+            }
+
+            QueueMouseReport(deltaX, deltaY, buttons, shouldLog, forceReport: true);
             return;
         }
 
@@ -605,16 +899,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void InputHookService_BridgeToggleRequested(object? sender, EventArgs e)
     {
-        Dispatcher.InvokeAsync(async () =>
-        {
-            if (bridgeService.IsRunning)
-            {
-                await StopBridgeAsync("Alt+Q로 브릿지를 중지했습니다.");
-                return;
-            }
-
-            await StartBridgeAsync();
-        });
+        Dispatcher.InvokeAsync(async () => await ToggleBridgeAsync("Alt+Q"));
     }
 
     private void BridgeService_MouseSubscriberChanged(object? sender, bool isConnected)
@@ -770,7 +1055,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                     hasShownBridgeConnectionFailureToast = true;
                     ShowBridgeStatusToast("iPad", "iPad", false, "연결 안됨");
-                    AddActivity("브릿지", "iPad가 아직 Bluetooth HID에 연결되지 않았습니다.");
+                    AddActivity("브릿지", "iPad HID 구독이 아직 확인되지 않았습니다. iPad에서 Hansung을 지운 뒤 액세서리를 다시 연결하는 복구 절차가 필요할 수 있습니다.");
+                    ShowIpadRecoveryGuide();
                 });
             }
             catch (OperationCanceledException)
@@ -791,12 +1077,60 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             await screenshotShareService.StartAsync();
+            RefreshClipboardUrlText();
             AddActivity("Screenshot", $"Ready: {screenshotShareService.LocalUrl}");
         }
         catch (Exception ex)
         {
             AddActivity("Screenshot", $"Server failed: {ex.Message}");
         }
+    }
+
+    private void RefreshClipboardUrlText()
+    {
+        ClipboardUrlTextBox.Text = screenshotShareService.ClipboardUrl;
+        if (string.IsNullOrWhiteSpace(ClipboardPinTextBox.Text))
+        {
+            ClipboardPinTextBox.Text = screenshotShareService.SharePin;
+        }
+    }
+
+    private void ApplyClipboardPin()
+    {
+        screenshotShareService.SetSharePin(ClipboardPinTextBox.Text);
+        ClipboardPinTextBox.Text = screenshotShareService.SharePin;
+    }
+
+    private void NetworkChange_NetworkAddressChanged(object? sender, EventArgs e)
+    {
+        QueueClipboardUrlRefresh();
+    }
+
+    private void QueueClipboardUrlRefresh()
+    {
+        if (isClipboardUrlRefreshQueued)
+        {
+            return;
+        }
+
+        isClipboardUrlRefreshQueued = true;
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(1000);
+                var previousUrl = ClipboardUrlTextBox.Text;
+                RefreshClipboardUrlText();
+                if (!string.Equals(previousUrl, ClipboardUrlTextBox.Text, StringComparison.Ordinal))
+                {
+                    AddActivity("Clipboard", $"Clipboard URL auto-refreshed: {ClipboardUrlTextBox.Text}");
+                }
+            }
+            finally
+            {
+                isClipboardUrlRefreshQueued = false;
+            }
+        });
     }
 
     private async Task CaptureAndShareScreenshotAsync()
@@ -838,6 +1172,191 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             AddActivity("Screenshot", $"Clipboard image share failed: {ex.Message}");
         }
+    }
+
+    private async Task ShareClipboardTextAsync()
+    {
+        try
+        {
+            if (!System.Windows.Clipboard.ContainsText())
+            {
+                AddActivity("Clipboard", "Clipboard has no text to share.");
+                return;
+            }
+
+            var text = System.Windows.Clipboard.GetText();
+            if (string.IsNullOrEmpty(text))
+            {
+                AddActivity("Clipboard", "Clipboard text is empty.");
+                return;
+            }
+
+            var result = await screenshotShareService.PublishClipboardTextAsync(text);
+            System.Windows.Clipboard.SetText(result.Url);
+            AddActivity("Clipboard", $"Text shared. URL copied: {result.Url}, chars={result.CharacterCount}");
+        }
+        catch (Exception ex)
+        {
+            AddActivity("Clipboard", $"Text share failed: {ex.Message}");
+        }
+    }
+
+    private async Task ShareClipboardAsync(bool updateClipboardWithUrl = true, bool isAutomatic = false)
+    {
+        try
+        {
+            if (System.Windows.Clipboard.ContainsFileDropList())
+            {
+                var files = System.Windows.Clipboard.GetFileDropList().Cast<string>().ToList();
+                var result = await screenshotShareService.PublishClipboardFilesAsync(files);
+                if (result.FileCount > 0)
+                {
+                    if (updateClipboardWithUrl)
+                    {
+                        System.Windows.Clipboard.SetText(result.Url);
+                    }
+
+                    AddActivity("Clipboard", isAutomatic
+                        ? $"Auto shared files. files={result.FileCount}"
+                        : $"Files shared. URL copied: {result.Url}, files={result.FileCount}");
+                    return;
+                }
+            }
+
+            if (System.Windows.Clipboard.ContainsImage())
+            {
+                var image = System.Windows.Clipboard.GetImage();
+                if (image is not null)
+                {
+                    await screenshotShareService.SaveClipboardImageAsync(image);
+                    if (updateClipboardWithUrl)
+                    {
+                        System.Windows.Clipboard.SetText(screenshotShareService.ClipboardUrl);
+                    }
+
+                    AddActivity("Clipboard", isAutomatic
+                        ? "Auto shared image."
+                        : $"Image shared. URL copied: {screenshotShareService.ClipboardUrl}");
+                    return;
+                }
+            }
+
+            if (System.Windows.Clipboard.ContainsText())
+            {
+                var text = System.Windows.Clipboard.GetText();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    await screenshotShareService.PublishClipboardTextAsync(text);
+                    await SyncLatestTextToGoogleDocsAsync(text, isAutomatic);
+                    if (updateClipboardWithUrl)
+                    {
+                        System.Windows.Clipboard.SetText(screenshotShareService.ClipboardUrl);
+                    }
+
+                    AddActivity("Clipboard", isAutomatic
+                        ? $"Auto shared text. chars={text.Length}"
+                        : $"Text shared. URL copied: {screenshotShareService.ClipboardUrl}, chars={text.Length}");
+                    return;
+                }
+            }
+
+            if (!isAutomatic)
+            {
+                AddActivity("Clipboard", "Clipboard has no shareable text, image, or file content.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddActivity("Clipboard", isAutomatic
+                ? $"Auto clipboard share failed: {ex.Message}"
+                : $"Clipboard share failed: {ex.Message}");
+        }
+    }
+
+    private async Task SyncLatestTextToGoogleDocsAsync(string text, bool isAutomatic)
+    {
+        if (GoogleDocsSyncCheckBox.IsChecked != true || isGoogleDocsSyncInProgress)
+        {
+            return;
+        }
+
+        isGoogleDocsSyncInProgress = true;
+        try
+        {
+            await googleDocsClipboardService.ReplaceLatestTextAsync(text);
+            GoogleDocsStatusText.Text = "최근 텍스트 동기화됨";
+            AddActivity("GoogleDocs", isAutomatic
+                ? $"Auto synced latest text. chars={text.Length}"
+                : $"Synced latest text. chars={text.Length}");
+        }
+        catch (Exception ex)
+        {
+            GoogleDocsStatusText.Text = "동기화 실패";
+            AddActivity("GoogleDocs", $"Sync failed: {ex.Message}");
+        }
+        finally
+        {
+            isGoogleDocsSyncInProgress = false;
+        }
+    }
+
+    private void LoadGoogleDocsSettingsIntoUi()
+    {
+        isLoadingGoogleDocsSettings = true;
+        try
+        {
+            var settings = googleDocsClipboardService.Settings;
+            GoogleDocsSyncCheckBox.IsChecked = settings.Enabled;
+            GoogleClientSecretsPathTextBox.Text = settings.ClientSecretsPath;
+            GoogleDocsDocumentTextBox.Text = settings.DocumentId;
+            GoogleDocsStatusText.Text = settings.Enabled ? "동기화 켜짐" : "동기화 꺼짐";
+        }
+        finally
+        {
+            isLoadingGoogleDocsSettings = false;
+        }
+    }
+
+    private void SaveGoogleDocsSettingsFromUi()
+    {
+        var settings = new GoogleDocsClipboardSettings
+        {
+            Enabled = GoogleDocsSyncCheckBox.IsChecked == true,
+            ClientSecretsPath = GoogleClientSecretsPathTextBox.Text.Trim(),
+            DocumentId = GoogleDocsClipboardService.ExtractDocumentId(GoogleDocsDocumentTextBox.Text)
+        };
+
+        googleDocsClipboardService.Save(settings);
+        GoogleDocsDocumentTextBox.Text = settings.DocumentId;
+        GoogleDocsStatusText.Text = settings.Enabled ? "동기화 켜짐" : "동기화 꺼짐";
+    }
+
+    private void QueueAutoClipboardShare()
+    {
+        if (!isAutoClipboardShareEnabled || isAutoClipboardShareInProgress)
+        {
+            return;
+        }
+
+        if ((DateTime.Now - lastAutoClipboardShare).TotalMilliseconds < 300)
+        {
+            return;
+        }
+
+        isAutoClipboardShareInProgress = true;
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(150);
+                await ShareClipboardAsync(updateClipboardWithUrl: false, isAutomatic: true);
+                lastAutoClipboardShare = DateTime.Now;
+            }
+            finally
+            {
+                isAutoClipboardShareInProgress = false;
+            }
+        });
     }
 
     private async Task TypeClipboardTextAsync(bool switchInputSourceFirst = false)
@@ -1388,8 +1907,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         lock (mouseStateLock)
         {
             mouseButtons = 0;
-            pendingMouseDeltaX = 0;
-            pendingMouseDeltaY = 0;
+            pendingMouseReports.Clear();
+            pendingMouseForceReport = false;
+            activeDragButtons = 0;
             mouseSendLoopRunning = false;
             lastPointerEvent = DateTime.MinValue;
             lastPointerLogEvent = DateTime.MinValue;
@@ -1405,6 +1925,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ReleaseLocalMouseButtons();
     }
 
+    private bool ShouldForwardMouseInput()
+    {
+        return isBridgeInputEnabled && bridgeService.IsRunning && isMouseSignalEnabled;
+    }
+
     private void CancelMouseSendLoop()
     {
         mouseSendLoopCancellation?.Cancel();
@@ -1412,16 +1937,53 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         mouseSendLoopCancellation = null;
     }
 
-    private void QueueMouseReport(sbyte deltaX, sbyte deltaY, byte buttons, bool shouldLog)
+    private void ClearPendingMouseReports()
     {
+        lock (mouseStateLock)
+        {
+            pendingMouseForceReport = false;
+            pendingMouseReports.Clear();
+            activeDragButtons = 0;
+            lastDragConfirmReport = DateTime.MinValue;
+            mouseButtons = 0;
+            mouseSendLoopRunning = false;
+        }
+    }
+
+    private void QueueMouseReport(sbyte deltaX, sbyte deltaY, byte buttons, bool shouldLog, bool forceReport = false)
+    {
+        if (!ShouldForwardMouseInput())
+        {
+            return;
+        }
+
         bool shouldStartLoop;
         CancellationToken token;
 
         lock (mouseStateLock)
         {
-            pendingMouseDeltaX += deltaX;
-            pendingMouseDeltaY += deltaY;
+            if (buttons != 0)
+            {
+                activeDragButtons = buttons;
+            }
+            else if (forceReport)
+            {
+                activeDragButtons = 0;
+            }
+
             mouseButtons = buttons;
+            var queuedButtons = activeDragButtons != 0 ? activeDragButtons : buttons;
+            if (forceReport && queuedButtons != 0)
+            {
+                EnqueueMouseReport(new QueuedMouseReport(0, 0, queuedButtons, true));
+            }
+
+            if (deltaX != 0 || deltaY != 0 || !forceReport || queuedButtons == 0)
+            {
+                EnqueueMouseReport(new QueuedMouseReport(deltaX, deltaY, queuedButtons, forceReport));
+            }
+
+            pendingMouseForceReport |= forceReport;
             shouldStartLoop = !mouseSendLoopRunning;
             if (shouldStartLoop)
             {
@@ -1444,6 +2006,77 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private void EnqueueMouseReport(QueuedMouseReport report)
+    {
+        if (CanCoalesceMouseReport(report) && pendingMouseReports.Count >= MouseQueueCoalesceAfter)
+        {
+            var reports = pendingMouseReports.ToList();
+            var lastIndex = reports.Count - 1;
+            var last = reports[lastIndex];
+            if (CanCoalesceMouseReport(last) && last.Buttons == report.Buttons)
+            {
+                reports[lastIndex] = CoalesceMouseReports(last, report);
+                pendingMouseReports.Clear();
+                foreach (var queuedReport in reports)
+                {
+                    pendingMouseReports.Enqueue(queuedReport);
+                }
+
+                return;
+            }
+        }
+
+        pendingMouseReports.Enqueue(report);
+        if (pendingMouseReports.Count > MouseMaxQueuedReports)
+        {
+            CoalescePendingMouseReports();
+        }
+    }
+
+    private void CoalescePendingMouseReports()
+    {
+        var coalescedReports = new List<QueuedMouseReport>(pendingMouseReports.Count);
+        while (pendingMouseReports.Count > 0)
+        {
+            var report = pendingMouseReports.Dequeue();
+            if (coalescedReports.Count > 0
+                && CanCoalesceMouseReport(report)
+                && CanCoalesceMouseReport(coalescedReports[^1])
+                && coalescedReports[^1].Buttons == report.Buttons)
+            {
+                coalescedReports[^1] = CoalesceMouseReports(coalescedReports[^1], report);
+                continue;
+            }
+
+            coalescedReports.Add(report);
+        }
+
+        foreach (var report in coalescedReports)
+        {
+            pendingMouseReports.Enqueue(report);
+        }
+    }
+
+    private static bool CanCoalesceMouseReport(QueuedMouseReport report)
+    {
+        return !report.ForceReport
+            && (report.DeltaX != 0 || report.DeltaY != 0);
+    }
+
+    private static QueuedMouseReport CoalesceMouseReports(QueuedMouseReport first, QueuedMouseReport second)
+    {
+        return first with
+        {
+            DeltaX = ClampToSByte(first.DeltaX + second.DeltaX),
+            DeltaY = ClampToSByte(first.DeltaY + second.DeltaY)
+        };
+    }
+
+    private static sbyte ClampToSByte(int value)
+    {
+        return (sbyte)Math.Clamp(value, sbyte.MinValue, sbyte.MaxValue);
+    }
+
     private async Task SendQueuedMouseReportsAsync(CancellationToken cancellationToken)
     {
         try
@@ -1451,35 +2084,80 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (!ShouldForwardMouseInput())
+                {
+                    ClearPendingMouseReports();
+                    return;
+                }
+
                 sbyte deltaX;
                 sbyte deltaY;
                 byte buttons;
+                bool isForcedReport;
 
                 lock (mouseStateLock)
                 {
-                    if (pendingMouseDeltaX == 0 && pendingMouseDeltaY == 0)
+                    if (pendingMouseReports.Count == 0)
                     {
-                        mouseSendLoopRunning = false;
-                        return;
-                    }
+                        buttons = activeDragButtons != 0 ? activeDragButtons : mouseButtons;
+                        isForcedReport = false;
 
-                    deltaX = TakeMouseDelta(ref pendingMouseDeltaX);
-                    deltaY = TakeMouseDelta(ref pendingMouseDeltaY);
-                    buttons = mouseButtons;
+                        if (buttons == 0)
+                        {
+                            mouseSendLoopRunning = false;
+                            return;
+                        }
+
+                        deltaX = 0;
+                        deltaY = 0;
+                    }
+                    else
+                    {
+                        var report = pendingMouseReports.Dequeue();
+                        deltaX = report.DeltaX;
+                        deltaY = report.DeltaY;
+                        buttons = report.Buttons;
+                        isForcedReport = report.ForceReport;
+                        pendingMouseForceReport = false;
+                    }
+                }
+
+                if (!ShouldForwardMouseInput())
+                {
+                    ClearPendingMouseReports();
+                    return;
+                }
+
+                var isDragStartSettleReport = deltaX == 0 && deltaY == 0 && buttons != 0 && isForcedReport;
+                var isDragMoveReport = buttons != 0 && (deltaX != 0 || deltaY != 0);
+                var now = DateTime.Now;
+                if (isDragMoveReport && (now - lastDragConfirmReport).TotalMilliseconds >= MouseDragConfirmIntervalMs)
+                {
+                    await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, buttons, 0, 0);
+                    lastDragConfirmReport = now;
                 }
 
                 await bridgeService.SendMouseReportAsync(activeDevice, deltaX, deltaY, buttons, 0, 0);
-                await Task.Delay(MouseSendIntervalMs, cancellationToken);
-
-                if (!bridgeService.IsRunning || !isMouseSignalEnabled)
+                now = DateTime.Now;
+                if (!isDragStartSettleReport
+                    && buttons != 0
+                    && (deltaX != 0 || deltaY != 0 || isForcedReport)
+                    && (now - lastDragConfirmReport).TotalMilliseconds >= MouseDragConfirmIntervalMs)
                 {
-                    lock (mouseStateLock)
-                    {
-                        pendingMouseDeltaX = 0;
-                        pendingMouseDeltaY = 0;
-                        mouseSendLoopRunning = false;
-                    }
+                    await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, buttons, 0, 0);
+                    lastDragConfirmReport = now;
+                }
 
+                var delay = isDragStartSettleReport
+                    ? MouseDragStartSettleMs
+                    : deltaX == 0 && deltaY == 0 && buttons != 0
+                        ? MouseDragKeepAliveIntervalMs
+                        : MouseSendIntervalMs;
+                await Task.Delay(delay, cancellationToken);
+
+                if (!ShouldForwardMouseInput())
+                {
+                    ClearPendingMouseReports();
                     return;
                 }
             }
@@ -1488,8 +2166,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             lock (mouseStateLock)
             {
-                pendingMouseDeltaX = 0;
-                pendingMouseDeltaY = 0;
+                pendingMouseForceReport = false;
+                pendingMouseReports.Clear();
+                activeDragButtons = 0;
+                lastDragConfirmReport = DateTime.MinValue;
                 mouseButtons = 0;
                 mouseSendLoopRunning = false;
             }
@@ -1511,6 +2191,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         try
         {
+            if (!ShouldForwardMouseInput())
+            {
+                ClearPendingMouseReports();
+                return;
+            }
+
             sbyte hWheel = 0;
             var shouldConfirmButtonRelease = buttons == 0;
             if (shouldConfirmButtonRelease)
@@ -1518,8 +2204,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 CancelMouseSendLoop();
                 lock (mouseStateLock)
                 {
-                    pendingMouseDeltaX = 0;
-                    pendingMouseDeltaY = 0;
+                    pendingMouseReports.Clear();
+                    pendingMouseForceReport = false;
+                    activeDragButtons = 0;
                     mouseButtons = 0;
                     mouseSendLoopRunning = false;
                 }
@@ -1562,10 +2249,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 }
             }
 
+            if (!ShouldForwardMouseInput())
+            {
+                ClearPendingMouseReports();
+                return;
+            }
+
             await bridgeService.SendMouseReportAsync(activeDevice, deltaX, deltaY, buttons, wheel, hWheel);
+            if (!ShouldForwardMouseInput())
+            {
+                ClearPendingMouseReports();
+                return;
+            }
+
             if (shouldConfirmButtonRelease)
             {
                 await Task.Delay(12);
+                if (!ShouldForwardMouseInput())
+                {
+                    ClearPendingMouseReports();
+                    return;
+                }
+
                 await bridgeService.SendMouseReportAsync(activeDevice, 0, 0, 0, 0, 0);
             }
 
@@ -1584,6 +2289,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         try
         {
+            if (!ShouldForwardMouseInput())
+            {
+                return;
+            }
+
             await bridgeService.SendKeyboardReportAsync(activeDevice, report, description);
             await Dispatcher.InvokeAsync(() => AddActivity("마우스", $"마우스 버튼 -> {description}"));
         }
@@ -1666,7 +2376,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void UpdatePointerCapture()
     {
-        inputHookService.CapturePointerEvents = bridgeService.IsRunning && isMouseSignalEnabled;
+        inputHookService.CapturePointerEvents = isBridgeInputEnabled && bridgeService.IsRunning && isMouseSignalEnabled;
     }
 
     private void UpdateMouseButtons(ushort buttonFlags)
@@ -1781,18 +2491,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void RefreshStatus()
     {
         ActiveDeviceNameText.Text = "노트북 -> iPad";
-        StatusText.Text = bridgeService.IsRunning
+        StatusText.Text = isBridgeInputEnabled
             ? "연결됨"
-            : "연결 준비 완료";
-        BridgeToggleButton.Content = bridgeService.IsRunning ? "해제" : "연결";
-        KeyboardStateText.Text = bridgeService.IsRunning ? "연결됨" : "준비됨";
-        MouseStateText.Text = bridgeService.IsRunning
+            : bridgeService.IsRunning ? "대기 중" : "연결 준비 완료";
+        BridgeToggleButton.Content = isBridgeInputEnabled ? "해제" : "연결";
+        KeyboardStateText.Text = isBridgeInputEnabled ? "연결됨" : bridgeService.IsRunning ? "대기" : "준비됨";
+        MouseStateText.Text = isBridgeInputEnabled
             ? isMouseSignalEnabled ? "연결됨" : "꺼짐"
-            : "준비됨";
+            : bridgeService.IsRunning ? "대기" : "준비됨";
         MouseSignalSummaryText.Text = isMouseSignalEnabled ? "켜짐" : "꺼짐";
-        RemoteDeviceText.Text = bridgeService.IsRunning
+        RemoteDeviceText.Text = isBridgeInputEnabled
             ? "페어링 중입니다. iPad에서 '액세서리'를 찾으세요. 연결 후 이름이 바뀔 수 있습니다."
-                            : "연결 준비 완료. Alt+Ctrl+Q 또는 연결 버튼을 누르세요.";
+            : bridgeService.IsRunning
+                ? "BLE HID 서비스는 유지 중입니다. Alt+Q를 누르면 입력 전달만 다시 켭니다."
+                : "연결 준비 완료. Alt+Q 또는 연결 버튼을 누르세요.";
     }
 
     private void RegisterClipboardHotKeys(IntPtr windowHandle)
@@ -1944,16 +2656,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void Window_Closed(object? sender, EventArgs e)
     {
+        NetworkChange.NetworkAddressChanged -= NetworkChange_NetworkAddressChanged;
+
+        var windowHandle = new WindowInteropHelper(this).Handle;
+        if (windowHandle != IntPtr.Zero)
+        {
+            _ = RemoveClipboardFormatListener(windowHandle);
+        }
+
         UnregisterClipboardHotKeys();
         trayIcon?.Dispose();
         trayIcon = null;
 
         if (bridgeService.IsRunning)
         {
-            await StopBridgeAsync("앱 종료로 브릿지를 중지했습니다.");
+            await StopBridgeAsync("앱 종료로 브릿지를 중지했습니다.", stopService: true);
         }
 
         screenshotShareService.Dispose();
+        googleDocsClipboardService.Dispose();
         inputHookService.Dispose();
     }
 
@@ -2037,6 +2758,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AddClipboardFormatListener(IntPtr hwnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterRawInputDevices(
         [In] RawInputDevice[] rawInputDevices,
         uint numberDevices,
@@ -2069,4 +2796,5 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private readonly record struct RawMouseInput(int DeltaX, int DeltaY, ushort ButtonFlags, ushort ButtonData);
+    private readonly record struct QueuedMouseReport(sbyte DeltaX, sbyte DeltaY, byte Buttons, bool ForceReport);
 }

@@ -39,6 +39,7 @@ public sealed class GlobalInputHookService : IDisposable
     private const int VkS = 0x53;
     private const int VkV = 0x56;
     private const int VkQ = 0x51;
+    private const int VkTab = 0x09;
 
     private readonly LowLevelProc keyboardProc;
     private readonly LowLevelProc mouseProc;
@@ -259,6 +260,11 @@ public sealed class GlobalInputHookService : IDisposable
                 return 1;
             }
 
+            if (ShouldAlwaysPassThroughShortcut(virtualKey))
+            {
+                return CallNextHookEx(keyboardHook, nCode, wParam, lParam);
+            }
+
             var key = KeyInterop.KeyFromVirtualKey(virtualKey);
             KeyChanged?.Invoke(this, new GlobalKeyEventArgs(key, virtualKey, isDown));
 
@@ -334,7 +340,7 @@ public sealed class GlobalInputHookService : IDisposable
             return false;
         }
 
-        return IsControlDown();
+        return IsControlDown() && IsAltDown();
     }
 
     private bool IsClipboardTypingCancelChord(int virtualKey)
@@ -357,6 +363,16 @@ public sealed class GlobalInputHookService : IDisposable
         {
             return false;
         }
+    }
+
+    private bool ShouldAlwaysPassThroughShortcut(int virtualKey)
+    {
+        if (virtualKey == VkEscape && IsControlDown() && IsShiftDown())
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private bool IsBridgeToggleChord(int virtualKey)
@@ -406,6 +422,12 @@ public sealed class GlobalInputHookService : IDisposable
     {
         return downVirtualKeys.Contains(VkV)
             || (GetAsyncKeyState(VkV) & 0x8000) != 0;
+    }
+
+    private bool IsTabDown()
+    {
+        return downVirtualKeys.Contains(VkTab)
+            || (GetAsyncKeyState(VkTab) & 0x8000) != 0;
     }
 
     private bool IsScreenshotChord(int virtualKey)
