@@ -86,12 +86,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const ushort ConsumerVolumeDecrement = 0x00EA;
     private const ushort ConsumerBrowserBack = 0x0224;
     private const ushort ConsumerBrowserForward = 0x0225;
-    private const double MouseScaleX = 0.95;
-    private const double MouseScaleY = 0.95;
+    private const double MouseScaleX = 1.0;
+    private const double MouseScaleY = 1.0;
     private const int MouseSendIntervalMs = 5;
-    private const int MouseDragStartSettleMs = 55;
-    private const int MouseDragKeepAliveIntervalMs = 28;
-    private const int MouseDragConfirmIntervalMs = 30;
+    private const int MouseDragStartSettleMs = 35;
+    private const int MouseDragKeepAliveIntervalMs = 20;
+    private const int MouseDragConfirmIntervalMs = 20;
     private const int MouseQueueCoalesceAfter = 4;
     private const int MouseMaxQueuedReports = 12;
     private const string RunRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -535,6 +535,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         AddActivity("Clipboard", $"Clipboard URL copied: {ClipboardUrlTextBox.Text}");
     }
 
+    private void CopyClipboardPinButton_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyClipboardPin();
+        System.Windows.Clipboard.SetText(ClipboardPinTextBox.Text);
+        AddActivity("Clipboard", "Clipboard PIN copied.");
+    }
+
     private void RefreshClipboardUrlButton_Click(object sender, RoutedEventArgs e)
     {
         ApplyClipboardPin();
@@ -550,11 +557,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RegenerateClipboardSecurityButton_Click(object sender, RoutedEventArgs e)
     {
-        screenshotShareService.SetSharePin(string.Empty);
+        if (FixedClipboardPinCheckBox.IsChecked == true)
+        {
+            ApplyClipboardPin();
+        }
+        else
+        {
+            screenshotShareService.SetSharePin(string.Empty);
+            ClipboardPinTextBox.Text = screenshotShareService.SharePin;
+        }
+
         screenshotShareService.RegenerateAccessToken();
-        ClipboardPinTextBox.Text = screenshotShareService.SharePin;
         RefreshClipboardUrlText();
-        AddActivity("Clipboard", "Clipboard token and PIN regenerated.");
+        AddActivity("Clipboard", FixedClipboardPinCheckBox.IsChecked == true
+            ? "Clipboard token regenerated; fixed PIN kept."
+            : "Clipboard token and PIN regenerated.");
     }
 
     private void SuppressKeysCheckBox_Changed(object sender, RoutedEventArgs e)

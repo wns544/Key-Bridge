@@ -247,7 +247,7 @@ public sealed class ScreenshotShareService : IDisposable
     {
         using var _ = client;
         await using var stream = client.GetStream();
-        await HandleRequestAsync(stream, cancellationToken);
+        await HandleRequestAsync(stream, isHttps: false, cancellationToken);
     }
 
     private async Task HandleHttpsClientAsync(TcpClient client, CancellationToken cancellationToken)
@@ -262,7 +262,7 @@ public sealed class ScreenshotShareService : IDisposable
                 clientCertificateRequired: false,
                 enabledSslProtocols: SslProtocols.Tls12,
                 checkCertificateRevocation: false);
-            await HandleRequestAsync(stream, cancellationToken);
+            await HandleRequestAsync(stream, isHttps: true, cancellationToken);
         }
         catch
         {
@@ -270,7 +270,7 @@ public sealed class ScreenshotShareService : IDisposable
         }
     }
 
-    private async Task HandleRequestAsync(Stream stream, CancellationToken cancellationToken)
+    private async Task HandleRequestAsync(Stream stream, bool isHttps, CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
 
@@ -314,6 +314,12 @@ public sealed class ScreenshotShareService : IDisposable
 
         if (path.Equals("/latest.png", StringComparison.OrdinalIgnoreCase))
         {
+            if (!isHttps && IsValidSharePin(query))
+            {
+                await SendLatestImageAsync(stream, cancellationToken);
+                return;
+            }
+
             await SendTextAsync(stream, HttpStatusCode.Forbidden, "Images are encrypted on /clipboard. Open the clipboard page and enter the PIN.", cancellationToken);
             return;
         }
@@ -332,7 +338,7 @@ public sealed class ScreenshotShareService : IDisposable
 
         if (path.Equals("/clipboard", StringComparison.OrdinalIgnoreCase))
         {
-            await SendClipboardPageAsync(stream, cancellationToken);
+            await SendClipboardPageAsync(stream, query, isHttps, cancellationToken);
             return;
         }
 
@@ -415,7 +421,7 @@ public sealed class ScreenshotShareService : IDisposable
         await SendTextAsync(stream, HttpStatusCode.OK, state, cancellationToken);
     }
 
-    private async Task SendClipboardPageAsync(Stream stream, CancellationToken cancellationToken)
+    private async Task SendClipboardPageAsync(Stream stream, string query, bool isHttps, CancellationToken cancellationToken)
     {
         ClipboardShareKind kind;
         DateTimeOffset? updatedAt;
@@ -438,14 +444,17 @@ public sealed class ScreenshotShareService : IDisposable
             clipboardLock.Release();
         }
 
-        var content = kind switch
+        var isPinUnlocked = IsValidSharePin(query);
+        var content = !isHttps && !isPinUnlocked
+            ? CreateHttpPinUnlockSection(query)
+            : kind switch
         {
-            ClipboardShareKind.Text => CreateSecureClipboardSection(),
-            ClipboardShareKind.Image => CreateSecureClipboardSection(),
+            ClipboardShareKind.Text => isHttps ? CreateSecureClipboardSection() : CreateClipboardTextSection(text),
+            ClipboardShareKind.Image => isHttps ? CreateSecureClipboardSection() : CreateClipboardImageSection(query),
             ClipboardShareKind.Files => "<p class=\"empty\">보안 모드에서는 파일 공유를 지원하지 않습니다.</p>",
             _ => "<p class=\"empty\">아직 공유된 클립보드가 없습니다.</p>"
         };
-        if (kind is ClipboardShareKind.Text or ClipboardShareKind.Image)
+        if (isHttps && kind is (ClipboardShareKind.Text or ClipboardShareKind.Image))
         {
             encryptedPayload = await CreateEncryptedClipboardPayloadAsync(kind, text, cancellationToken);
         }
@@ -582,7 +591,12 @@ public sealed class ScreenshotShareService : IDisposable
             }
             async function copySharedImage() {
               try {
-                if (!latestImageBlob) throw new Error('No image');
+                if (!latestImageBlob) {
+                  const image = document.getElementById('shared-image');
+                  if (!image?.src) throw new Error('No image');
+                  const response = await fetch(image.src, { cache: 'no-store' });
+                  latestImageBlob = await response.blob();
+                }
                 await navigator.clipboard.write([
                   new ClipboardItem({ [latestImageBlob.type || 'image/png']: latestImageBlob })
                 ]);
@@ -779,13 +793,19 @@ public sealed class ScreenshotShareService : IDisposable
             """;
     }
 
-    private static string CreateClipboardImageSection()
+    private static string CreateClipboardImageSection(string query)
     {
-        return """
+        var imageUrl = "/latest.png";
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            imageUrl += "?" + WebUtility.HtmlEncode(query);
+        }
+
+        return $$"""
             <p>이미지는 길게 눌러 복사하거나 공유 메뉴로 저장할 수 있습니다.</p>
-            <img src="/latest.png" alt="Shared clipboard image">
+            <img src="{{imageUrl}}" alt="Shared clipboard image">
             <button id="copy-image" type="button">이미지 복사</button>
-            <a class="button" href="/latest.png">이미지 열기</a>
+            <a class="button" href="{{imageUrl}}">이미지 열기</a>
             """;
     }
 
@@ -815,6 +835,22 @@ public sealed class ScreenshotShareService : IDisposable
     private static string CreateClipboardState(ClipboardShareKind kind, DateTimeOffset? updatedAt, int textLength, int fileCount)
     {
         return $"{kind}|{updatedAt?.ToUnixTimeMilliseconds() ?? 0}|{textLength}|{fileCount}";
+    }
+
+    private static string CreateHttpPinUnlockSection(string query)
+    {
+        var token = WebUtility.HtmlEncode(GetQueryValue(query, "t") ?? GetQueryValue(query, "token") ?? string.Empty);
+        return $$"""
+            <div class="unlock">
+              <form method="get" action="/clipboard">
+                <input type="hidden" name="t" value="{{token}}">
+                <label for="pin">PIN</label>
+                <p class="pin-help">인증서 경고 없이 여는 로컬 모드입니다. KeyBridge 앱에 표시된 PIN을 입력하세요.</p>
+                <input id="pin" name="p" inputmode="numeric" autocomplete="off" placeholder="PIN 입력">
+                <button type="submit">내용 열기</button>
+              </form>
+            </div>
+            """;
     }
 
     private static string CreateSecureClipboardSection()
@@ -924,6 +960,37 @@ public sealed class ScreenshotShareService : IDisposable
         }
 
         return false;
+    }
+
+    private bool IsValidSharePin(string query)
+    {
+        var value = GetQueryValue(query, "p") ?? GetQueryValue(query, "pin");
+        return !string.IsNullOrEmpty(value)
+            && CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(value),
+                Encoding.UTF8.GetBytes(sharePin));
+    }
+
+    private static string? GetQueryValue(string query, string key)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return null;
+        }
+
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pieces = part.Split('=', 2);
+            var name = WebUtility.UrlDecode(pieces[0]);
+            if (!string.Equals(name, key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return pieces.Length > 1 ? WebUtility.UrlDecode(pieces[1]) : string.Empty;
+        }
+
+        return null;
     }
 
     private static async Task SendTextAsync(Stream stream, HttpStatusCode statusCode, string body, CancellationToken cancellationToken, string contentType = "text/plain; charset=utf-8")

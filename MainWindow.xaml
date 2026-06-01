@@ -7,9 +7,9 @@
         mc:Ignorable="d"
         Title="KeyBridge"
         Width="1180"
-        Height="680"
+        Height="640"
         MinWidth="760"
-        MinHeight="520"
+        MinHeight="500"
         Background="{DynamicResource CanvasParchmentBrush}"
         Closed="Window_Closed">
     <Window.Resources>
@@ -390,55 +390,55 @@
                 </Border>
 
                 <Border Background="{StaticResource CanvasParchmentBrush}"
-                        Padding="12,8">
+                        Padding="10,6">
                     <WrapPanel MaxWidth="1160"
                                HorizontalAlignment="Center"
-                               ItemWidth="442">
+                               ItemWidth="432">
                         <Border Style="{StaticResource UtilityCard}"
-                                Width="426"
-                                MinHeight="292"
-                                Margin="0,0,10,10">
+                                Width="416"
+                                MinHeight="262"
+                                Margin="0,0,8,8">
                             <StackPanel>
                                 <TextBlock Text="현재 상태"
                                            Style="{StaticResource CaptionText}" />
                                 <TextBlock x:Name="ActiveDeviceNameText"
                                            Text="노트북 -> iPad"
-                                           FontSize="26"
+                                           FontSize="24"
                                            FontWeight="SemiBold"
-                                           LineHeight="31"
-                                           Margin="0,5,0,0" />
+                                           LineHeight="29"
+                                           Margin="0,4,0,0" />
                                 <TextBlock x:Name="StatusText"
                                            Text="연결 준비 완료"
-                                           FontSize="19"
+                                           FontSize="18"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryBrush}"
-                                           LineHeight="24"
-                                           Margin="0,1,0,8" />
+                                           LineHeight="22"
+                                           Margin="0,1,0,6" />
 
                                 <Viewbox Stretch="Uniform"
                                          StretchDirection="DownOnly"
                                          HorizontalAlignment="Center"
-                                         MaxWidth="264"
-                                         Margin="0,0,0,6">
-                                    <Grid Width="620" Height="168">
+                                         MaxWidth="244"
+                                         Margin="0,0,0,4">
+                                    <Grid Width="620" Height="154">
                                         <Grid Width="230"
-                                              Height="126"
+                                              Height="112"
                                               HorizontalAlignment="Left"
                                               VerticalAlignment="Center"
                                               Margin="20,0,0,0">
-                                            <Grid Margin="22,8">
+                                            <Grid Margin="22,6">
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="*" />
-                                                    <RowDefinition Height="18" />
+                                                    <RowDefinition Height="16" />
                                                 </Grid.RowDefinitions>
 
                                                 <Canvas Grid.Row="0"
                                                         Width="150"
-                                                        Height="90"
+                                                        Height="82"
                                                         HorizontalAlignment="Center"
                                                         VerticalAlignment="Bottom">
                                                     <Border Width="132"
-                                                            Height="78"
+                                                            Height="70"
                                                             Canvas.Left="9"
                                                             Canvas.Top="0"
                                                             CornerRadius="7"
@@ -449,49 +449,49 @@
                                                           Stroke="#C9C9CF"
                                                           StrokeThickness="2" />
                                                     <Path Fill="#D8D8DE"
-                                                          Data="M 0,86 L 150,86 L 138,90 L 12,90 Z" />
+                                                          Data="M 0,78 L 150,78 L 138,82 L 12,82 Z" />
                                                     <Path Fill="#C9C9CF"
                                                           Data="M 68,92 L 92,92 L 88,95 L 72,95 Z" />
                                                 </Canvas>
 
                                                 <TextBlock Text="노트북"
                                                            Grid.Row="1"
-                                                           FontSize="14"
+                                                           FontSize="13"
                                                            Foreground="{StaticResource MutedBrush}"
                                                            HorizontalAlignment="Center"
                                                            VerticalAlignment="Center"
-                                                           Margin="0,4,0,0" />
+                                                           Margin="0,2,0,0" />
                                             </Grid>
                                         </Grid>
 
                                         <Canvas Width="150"
-                                                Height="62"
+                                                Height="56"
                                                 HorizontalAlignment="Center"
                                                 VerticalAlignment="Center">
-                                            <Line X1="0" Y1="31" X2="128" Y2="31"
+                                            <Line X1="0" Y1="28" X2="128" Y2="28"
                                                   Stroke="{StaticResource PrimaryBrush}"
                                                   StrokeThickness="3" />
-                                            <Polygon Points="128,21 150,31 128,41"
+                                            <Polygon Points="128,18 150,28 128,38"
                                                      Fill="{StaticResource PrimaryBrush}" />
-                                            <Ellipse Width="6" Height="6" Fill="#A6CBEF" Canvas.Left="54" Canvas.Top="48" />
-                                            <Ellipse Width="6" Height="6" Fill="#6BA9E8" Canvas.Left="73" Canvas.Top="48" />
-                                            <Ellipse Width="6" Height="6" Fill="{StaticResource PrimaryBrush}" Canvas.Left="92" Canvas.Top="48" />
+                                            <Ellipse Width="6" Height="6" Fill="#A6CBEF" Canvas.Left="54" Canvas.Top="43" />
+                                            <Ellipse Width="6" Height="6" Fill="#6BA9E8" Canvas.Left="73" Canvas.Top="43" />
+                                            <Ellipse Width="6" Height="6" Fill="{StaticResource PrimaryBrush}" Canvas.Left="92" Canvas.Top="43" />
                                         </Canvas>
 
                                         <Border Width="150"
-                                                Height="184"
+                                                Height="164"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Center"
-                                                CornerRadius="28"
+                                                CornerRadius="24"
                                                 BorderBrush="#D2D2D7"
                                                 BorderThickness="2"
                                                 Background="{StaticResource CanvasBrush}"
                                                 Margin="0,0,20,0">
-                                            <Border Margin="18"
-                                                    CornerRadius="18"
+                                            <Border Margin="16"
+                                                    CornerRadius="16"
                                                     Background="{StaticResource SurfacePearlBrush}">
                                                 <TextBlock Text="iPad"
-                                                           FontSize="24"
+                                                           FontSize="22"
                                                            FontWeight="SemiBold"
                                                            HorizontalAlignment="Center"
                                                            VerticalAlignment="Center" />
@@ -501,19 +501,19 @@
                                 </Viewbox>
 
                                 <WrapPanel HorizontalAlignment="Center">
-                                    <Border Style="{StaticResource StatusCard}" Width="92" Margin="0,0,6,6">
+                                    <Border Style="{StaticResource StatusCard}" Width="88" Margin="0,0,5,4">
                                         <StackPanel>
                                             <TextBlock Text="키보드" Style="{StaticResource CaptionText}" />
                                             <TextBlock x:Name="KeyboardStateText" Text="준비됨" FontWeight="SemiBold" />
                                         </StackPanel>
                                     </Border>
-                                    <Border Style="{StaticResource StatusCard}" Width="100" Margin="0,0,6,6">
+                                    <Border Style="{StaticResource StatusCard}" Width="96" Margin="0,0,5,4">
                                         <StackPanel>
                                             <TextBlock Text="블루투스" Style="{StaticResource CaptionText}" />
                                             <TextBlock x:Name="BackendStateText" Text="BLE HID" FontWeight="SemiBold" />
                                         </StackPanel>
                                     </Border>
-                                    <Border Style="{StaticResource StatusCard}" Width="92" Margin="0,0,0,6">
+                                    <Border Style="{StaticResource StatusCard}" Width="88" Margin="0,0,0,4">
                                         <StackPanel>
                                             <TextBlock Text="마우스" Style="{StaticResource CaptionText}" />
                                             <TextBlock x:Name="MouseStateText" Text="준비됨" FontWeight="SemiBold" />
@@ -523,76 +523,85 @@
                             </StackPanel>
                         </Border>
 
-                        <StackPanel Width="426">
-                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,10">
+                        <StackPanel Width="416">
+                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,8">
                                 <StackPanel>
                                     <TextBlock Text="빠른 동작"
-                                               FontSize="18"
+                                               FontSize="16"
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="불필요한 화면 전환 없이 빠르게 연결하고 해제합니다."
                                                Style="{StaticResource CaptionText}"
-                                               Margin="0,1,0,6" />
+                                               Margin="0,1,0,4" />
                                     <Button Content="연결 / 해제"
                                             Style="{StaticResource PrimaryButton}"
                                             HorizontalAlignment="Stretch"
                                             Click="BridgeToggleButton_Click" />
                                     <Button Content="클립보드 입력"
                                             HorizontalAlignment="Stretch"
-                                            Margin="0,4,0,0"
+                                            Margin="0,3,0,0"
                                             Click="TypeClipboardButton_Click" />
                                     <Button Content="클립보드 공유"
                                             HorizontalAlignment="Stretch"
-                                            Margin="0,4,0,0"
+                                            Margin="0,3,0,0"
                                             Click="ShareClipboardButton_Click" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,10">
+                            <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,8">
                                 <StackPanel>
                                     <TextBlock Text="iPad 클립보드 주소"
-                                               FontSize="18"
+                                               FontSize="16"
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="PC와 iPad가 같은 Wi-Fi나 핫스팟에 있을 때 브라우저에서 여세요. HTTPS는 로컬 인증서 경고가 뜰 수 있습니다."
                                                Style="{StaticResource CaptionText}"
-                                               Margin="0,1,0,4" />
+                                               Margin="0,1,0,3" />
                                     <TextBox x:Name="ClipboardUrlTextBox"
                                              IsReadOnly="True"
-                                             MinHeight="28"
+                                             MinHeight="24"
                                              VerticalContentAlignment="Center"
                                              Text="서버 준비 중" />
                                     <TextBlock Text="PIN"
                                                Style="{StaticResource CaptionText}"
-                                               Margin="0,5,0,2" />
+                                               Margin="0,4,0,1" />
                                     <TextBox x:Name="ClipboardPinTextBox"
-                                             MinHeight="28"
+                                             MinHeight="24"
                                              VerticalContentAlignment="Center" />
-                                    <UniformGrid Columns="4" Margin="0,6,0,0">
+                                    <CheckBox x:Name="FixedClipboardPinCheckBox"
+                                              Content="PIN 고정"
+                                              IsChecked="True"
+                                              Margin="0,3,0,2" />
+                                    <UniformGrid Columns="5" Margin="0,4,0,0">
                                         <Button Content="주소 복사"
                                                 MinWidth="0"
-                                                Padding="8,5"
+                                                Padding="7,4"
                                                 Margin="0,0,6,0"
                                                 Click="CopyClipboardUrlButton_Click" />
                                         <Button Content="주소 새로고침"
                                                 MinWidth="0"
-                                                Padding="8,5"
+                                                Padding="7,4"
                                                 Margin="0,0,6,0"
                                                 Click="RefreshClipboardUrlButton_Click" />
                                         <Button Content="PIN 적용"
                                                 MinWidth="0"
-                                                Padding="8,5"
+                                                Padding="7,4"
                                                 Margin="0,0,6,0"
                                                 Click="ApplyClipboardPinButton_Click" />
-                                        <Button Content="새 토큰/PIN"
+                                        <Button Content="PIN 복사"
                                                 MinWidth="0"
-                                                Padding="8,5"
+                                                Padding="7,4"
+                                                Margin="0,0,6,0"
+                                                Click="CopyClipboardPinButton_Click" />
+                                        <Button Content="새 주소"
+                                                MinWidth="0"
+                                                Padding="7,4"
                                                 Margin="0"
                                                 Click="RegenerateClipboardSecurityButton_Click" />
                                     </UniformGrid>
                                 </StackPanel>
                             </Border>
 
-                            <Expander Header="고급 도구" Margin="0,0,0,16">
-                                <StackPanel Margin="0,8,0,0">
+                            <Expander Header="고급 도구" Margin="0,0,0,8">
+                                <StackPanel Margin="0,6,0,0">
                                     <Border Style="{StaticResource UtilityCard}" Margin="0,0,0,12">
                                         <StackPanel>
                                             <TextBlock Text="페어링"
@@ -844,35 +853,35 @@
                 </Border>
 
                 <Border Background="{StaticResource CanvasParchmentBrush}"
-                        Padding="14,6,14,10">
+                        Padding="10,4,10,8">
                     <Border Style="{StaticResource UtilityCard}"
                             MaxWidth="1160"
                             HorizontalAlignment="Center">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="40" />
+                                <RowDefinition Height="30" />
                             </Grid.RowDefinitions>
 
                             <DockPanel Grid.Row="0"
                                        LastChildFill="True"
-                                       Margin="0,0,0,6">
+                                       Margin="0,0,0,4">
                                 <WrapPanel DockPanel.Dock="Right"
-                                           Margin="16,0,0,4">
+                                           Margin="12,0,0,2">
                                     <Button Content="로그 복사"
-                                            MinWidth="92"
-                                            Padding="14,5"
-                                            Margin="0,0,6,4"
+                                            MinWidth="84"
+                                            Padding="10,4"
+                                            Margin="0,0,5,2"
                                             Click="CopyLogsButton_Click" />
                                     <Button Content="로그 지우기"
-                                            MinWidth="96"
-                                            Padding="14,5"
-                                            Margin="0,0,0,4"
+                                            MinWidth="88"
+                                            Padding="10,4"
+                                            Margin="0,0,0,2"
                                             Click="ClearLogButton_Click" />
                                 </WrapPanel>
                                 <StackPanel>
                                     <TextBlock Text="입력 로그"
-                                               FontSize="15"
+                                               FontSize="14"
                                                FontWeight="SemiBold" />
                                     <TextBlock Text="동작 기록은 보이되, 브릿지 사용을 방해하지 않게 정리했습니다."
                                                Style="{StaticResource CaptionText}"
@@ -891,7 +900,7 @@
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate DataType="{x:Type models:ActivityEvent}">
-                                        <Grid Margin="6,2">
+                                        <Grid Margin="5,1">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="66" />
                                                 <ColumnDefinition Width="82" />

@@ -265,10 +265,15 @@ public sealed class GlobalInputHookService : IDisposable
                 return CallNextHookEx(keyboardHook, nCode, wParam, lParam);
             }
 
+            if (!ShouldCaptureInput())
+            {
+                return CallNextHookEx(keyboardHook, nCode, wParam, lParam);
+            }
+
             var key = KeyInterop.KeyFromVirtualKey(virtualKey);
             KeyChanged?.Invoke(this, new GlobalKeyEventArgs(key, virtualKey, isDown));
 
-            if (SuppressForwardedKeys && ShouldCaptureInput())
+            if (SuppressForwardedKeys)
             {
                 return 1;
             }
