@@ -865,7 +865,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="30" />
+                                <RowDefinition Height="150" />
                             </Grid.RowDefinitions>
 
                             <DockPanel Grid.Row="0"
@@ -902,6 +902,7 @@
                                      BorderThickness="1"
                                      Background="{StaticResource CanvasBrush}"
                                      HorizontalContentAlignment="Stretch"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate DataType="{x:Type models:ActivityEvent}">
@@ -917,7 +918,8 @@
                                                        Text="{Binding Channel}"
                                                        FontWeight="SemiBold" />
                                             <TextBlock Grid.Column="2"
-                                                       Text="{Binding Message}" />
+                                                       Text="{Binding Message}"
+                                                       TextWrapping="Wrap" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
