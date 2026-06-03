@@ -91,12 +91,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const ushort ConsumerBrowserForward = 0x0225;
     private const double MouseScaleX = 1.0;
     private const double MouseScaleY = 1.0;
-    private const int MouseSendIntervalMs = 5;
-    private const int MouseDragStartSettleMs = 35;
-    private const int MouseDragKeepAliveIntervalMs = 20;
-    private const int MouseDragConfirmIntervalMs = 20;
-    private const int MouseQueueCoalesceAfter = 4;
-    private const int MouseMaxQueuedReports = 12;
+    private const int MouseMoveThrottleMs = 1;
+    private const int MouseSendIntervalMs = 1;
+    private const int MouseDragStartSettleMs = 12;
+    private const int MouseDragKeepAliveIntervalMs = 10;
+    private const int MouseDragConfirmIntervalMs = 14;
+    private const int MouseQueueCoalesceAfter = 2;
+    private const int MouseMaxQueuedReports = 8;
     private const string RunRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunRegistryName = "KeyBridge";
 
@@ -866,7 +867,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         lock (mouseStateLock)
         {
-            if (rawMouseInput.ButtonFlags == 0 && (now - lastPointerEvent).TotalMilliseconds < 3)
+            if (rawMouseInput.ButtonFlags == 0 && (now - lastPointerEvent).TotalMilliseconds < MouseMoveThrottleMs)
             {
                 return;
             }
@@ -2090,6 +2091,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void EnqueueMouseReport(QueuedMouseReport report)
     {
+        if (CanCoalesceMouseReport(report) && report.Buttons == 0)
+        {
+            CoalesceTrailingMouseMoveReport(report);
+            return;
+        }
+
         if (CanCoalesceMouseReport(report) && pendingMouseReports.Count >= MouseQueueCoalesceAfter)
         {
             var reports = pendingMouseReports.ToList();
@@ -2113,6 +2120,45 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             CoalescePendingMouseReports();
         }
+    }
+
+    private void CoalesceTrailingMouseMoveReport(QueuedMouseReport report)
+    {
+        if (pendingMouseReports.Count == 0)
+        {
+            pendingMouseReports.Enqueue(report);
+            return;
+        }
+
+        var reports = pendingMouseReports.ToList();
+        var mergedReport = report;
+        var removeFromIndex = reports.Count;
+
+        for (var index = reports.Count - 1; index >= 0; index--)
+        {
+            var existingReport = reports[index];
+            if (!CanCoalesceMouseReport(existingReport) || existingReport.Buttons != report.Buttons)
+            {
+                break;
+            }
+
+            mergedReport = CoalesceMouseReports(existingReport, mergedReport);
+            removeFromIndex = index;
+        }
+
+        if (removeFromIndex == reports.Count)
+        {
+            pendingMouseReports.Enqueue(report);
+            return;
+        }
+
+        pendingMouseReports.Clear();
+        for (var index = 0; index < removeFromIndex; index++)
+        {
+            pendingMouseReports.Enqueue(reports[index]);
+        }
+
+        pendingMouseReports.Enqueue(mergedReport);
     }
 
     private void CoalescePendingMouseReports()
