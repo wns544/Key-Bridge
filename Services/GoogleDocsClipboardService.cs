@@ -23,6 +23,7 @@ public sealed class GoogleDocsClipboardService : IDisposable
     private readonly string configDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "KeyBridge");
+    private readonly SemaphoreSlim documentUpdateLock = new(1, 1);
     private DocsService? docsService;
     private DriveService? driveService;
 
@@ -78,39 +79,47 @@ public sealed class GoogleDocsClipboardService : IDisposable
             return;
         }
 
-        ValidateSettings();
-        var service = await GetDocsServiceAsync(cancellationToken);
-        var document = await service.Documents.Get(Settings.DocumentId).ExecuteAsync(cancellationToken);
-        var endIndex = document.Body?.Content?.LastOrDefault()?.EndIndex ?? 1;
-        var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        var requests = new List<Request>();
-
-        if (endIndex > 2)
+        await documentUpdateLock.WaitAsync(cancellationToken);
+        try
         {
+            ValidateSettings();
+            var service = await GetDocsServiceAsync(cancellationToken);
+            var document = await service.Documents.Get(Settings.DocumentId).ExecuteAsync(cancellationToken);
+            var endIndex = document.Body?.Content?.LastOrDefault()?.EndIndex ?? 1;
+            var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+            var requests = new List<Request>();
+
+            if (endIndex > 2)
+            {
+                requests.Add(new Request
+                {
+                    DeleteContentRange = new DeleteContentRangeRequest
+                    {
+                        Range = new Google.Apis.Docs.v1.Data.Range
+                        {
+                            StartIndex = 1,
+                            EndIndex = endIndex - 1
+                        }
+                    }
+                });
+            }
+
             requests.Add(new Request
             {
-                DeleteContentRange = new DeleteContentRangeRequest
+                InsertText = new InsertTextRequest
                 {
-                    Range = new Google.Apis.Docs.v1.Data.Range
-                    {
-                        StartIndex = 1,
-                        EndIndex = endIndex - 1
-                    }
+                    Location = new Location { Index = 1 },
+                    Text = normalizedText
                 }
             });
+
+            var update = new BatchUpdateDocumentRequest { Requests = requests };
+            await service.Documents.BatchUpdate(update, Settings.DocumentId).ExecuteAsync(cancellationToken);
         }
-
-        requests.Add(new Request
+        finally
         {
-            InsertText = new InsertTextRequest
-            {
-                Location = new Location { Index = 1 },
-                Text = normalizedText
-            }
-        });
-
-        var update = new BatchUpdateDocumentRequest { Requests = requests };
-        await service.Documents.BatchUpdate(update, Settings.DocumentId).ExecuteAsync(cancellationToken);
+            documentUpdateLock.Release();
+        }
     }
 
     public async Task<GoogleDriveImageUploadResult> UploadLatestImageAsync(string imagePath, CancellationToken cancellationToken = default)
@@ -176,6 +185,7 @@ public sealed class GoogleDocsClipboardService : IDisposable
     {
         docsService?.Dispose();
         driveService?.Dispose();
+        documentUpdateLock.Dispose();
     }
 
     private void ValidateSettings()

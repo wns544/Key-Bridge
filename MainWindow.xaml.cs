@@ -123,6 +123,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool isAutoClipboardShareEnabled;
     private bool isAutoClipboardShareInProgress;
     private bool isGoogleDocsSyncInProgress;
+    private string? lastGoogleDocsSyncedText;
+    private DateTime lastGoogleDocsSyncedAt = DateTime.MinValue;
     private bool isLoadingGoogleDocsSettings;
     private bool isClipboardUrlRefreshQueued;
     private bool isExitRequested;
@@ -1272,7 +1274,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (System.Windows.Clipboard.ContainsText())
             {
-                var text = System.Windows.Clipboard.GetText();
+                var text = await ReadClipboardTextForShareAsync(isAutomatic);
                 if (!string.IsNullOrEmpty(text))
                 {
                     await screenshotShareService.PublishClipboardTextAsync(text);
@@ -1302,6 +1304,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private static async Task<string> ReadClipboardTextForShareAsync(bool requireStableRead)
+    {
+        var text = System.Windows.Clipboard.GetText();
+        if (!requireStableRead)
+        {
+            return text;
+        }
+
+        await Task.Delay(AutoClipboardStableReadDelayMs);
+        if (!System.Windows.Clipboard.ContainsText())
+        {
+            return text;
+        }
+
+        var secondRead = System.Windows.Clipboard.GetText();
+        if (string.Equals(text, secondRead, StringComparison.Ordinal))
+        {
+            return text;
+        }
+
+        await Task.Delay(AutoClipboardStableReadDelayMs);
+        return System.Windows.Clipboard.ContainsText()
+            ? System.Windows.Clipboard.GetText()
+            : secondRead;
+    }
+
     private async Task SyncLatestTextToGoogleDocsAsync(string text, bool isAutomatic)
     {
         if (GoogleDocsSyncCheckBox.IsChecked != true || isGoogleDocsSyncInProgress)
@@ -1309,14 +1337,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        if (string.Equals(lastGoogleDocsSyncedText, normalizedText, StringComparison.Ordinal)
+            && (DateTime.Now - lastGoogleDocsSyncedAt).TotalMilliseconds < GoogleDocsDuplicateSyncWindowMs)
+        {
+            AddActivity("GoogleDocs", "Skipped duplicate latest text sync.");
+            return;
+        }
+
         isGoogleDocsSyncInProgress = true;
         try
         {
-            await googleDocsClipboardService.ReplaceLatestTextAsync(text);
+            await googleDocsClipboardService.ReplaceLatestTextAsync(normalizedText);
+            lastGoogleDocsSyncedText = normalizedText;
+            lastGoogleDocsSyncedAt = DateTime.Now;
             GoogleDocsStatusText.Text = "최근 텍스트 동기화됨";
             AddActivity("GoogleDocs", isAutomatic
-                ? $"Auto synced latest text. chars={text.Length}"
-                : $"Synced latest text. chars={text.Length}");
+                ? $"Auto synced latest text. chars={normalizedText.Length}"
+                : $"Synced latest text. chars={normalizedText.Length}");
         }
         catch (Exception ex)
         {
@@ -1362,28 +1400,43 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void QueueAutoClipboardShare()
     {
-        if (!isAutoClipboardShareEnabled || isAutoClipboardShareInProgress)
+        if (!isAutoClipboardShareEnabled)
         {
             return;
         }
 
-        if ((DateTime.Now - lastAutoClipboardShare).TotalMilliseconds < 300)
-        {
-            return;
-        }
-
-        isAutoClipboardShareInProgress = true;
+        autoClipboardShareCancellation?.Cancel();
+        autoClipboardShareCancellation?.Dispose();
+        autoClipboardShareCancellation = new CancellationTokenSource();
+        var cancellationToken = autoClipboardShareCancellation.Token;
         _ = Dispatcher.InvokeAsync(async () =>
         {
+            var startedProcessing = false;
             try
             {
-                await Task.Delay(150);
+                await Task.Delay(AutoClipboardShareDebounceMs, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (isAutoClipboardShareInProgress
+                    || (DateTime.Now - lastAutoClipboardShare).TotalMilliseconds < AutoClipboardShareDebounceMs)
+                {
+                    return;
+                }
+
+                isAutoClipboardShareInProgress = true;
+                startedProcessing = true;
                 await ShareClipboardAsync(updateClipboardWithUrl: false, isAutomatic: true);
                 lastAutoClipboardShare = DateTime.Now;
             }
+            catch (OperationCanceledException)
+            {
+            }
             finally
             {
-                isAutoClipboardShareInProgress = false;
+                if (startedProcessing)
+                {
+                    isAutoClipboardShareInProgress = false;
+                }
             }
         });
     }
