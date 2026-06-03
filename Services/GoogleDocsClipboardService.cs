@@ -302,6 +302,8 @@ public sealed record GoogleDocsClipboardSettings
     public string ClientSecretsPath { get; init; } = string.Empty;
 
     public string DocumentId { get; init; } = string.Empty;
+
+    public bool IncludeCodeBlockLanguage { get; init; }
 }
 
 public sealed record GoogleDriveImageUploadResult(string FileId, string Url);

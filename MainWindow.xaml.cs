@@ -2,10 +2,12 @@ using KeyboardPadBridge.Models;
 using KeyboardPadBridge.Services;
 using System.IO;
 using System.ComponentModel;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
 using System.Windows;
@@ -662,6 +664,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             : "Auto clipboard share disabled.");
     }
 
+    private void ClipboardCodeLanguageCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (isLoadingGoogleDocsSettings)
+        {
+            return;
+        }
+
+        SaveGoogleDocsSettingsFromUi();
+        AddActivity("Clipboard", ClipboardCodeLanguageCheckBox.IsChecked == true
+            ? "Code block language labels enabled."
+            : "Code block language labels disabled.");
+    }
+
     private void BrowseGoogleClientSecretsButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
@@ -1216,7 +1231,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            var text = System.Windows.Clipboard.GetText();
+            var text = await ReadClipboardTextForShareAsync(requireStableRead: false);
             if (string.IsNullOrEmpty(text))
             {
                 AddActivity("Clipboard", "Clipboard text is empty.");
@@ -1305,9 +1320,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private static async Task<string> ReadClipboardTextForShareAsync(bool requireStableRead)
+    private async Task<string> ReadClipboardTextForShareAsync(bool requireStableRead)
     {
-        var text = System.Windows.Clipboard.GetText();
+        var text = ReadBestClipboardTextForShare();
         if (!requireStableRead)
         {
             return text;
@@ -1319,7 +1334,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return text;
         }
 
-        var secondRead = System.Windows.Clipboard.GetText();
+        var secondRead = ReadBestClipboardTextForShare();
         if (string.Equals(text, secondRead, StringComparison.Ordinal))
         {
             return text;
@@ -1327,8 +1342,161 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         await Task.Delay(AutoClipboardStableReadDelayMs);
         return System.Windows.Clipboard.ContainsText()
-            ? System.Windows.Clipboard.GetText()
+            ? ReadBestClipboardTextForShare()
             : secondRead;
+    }
+
+    private string ReadBestClipboardTextForShare()
+    {
+        var plainText = System.Windows.Clipboard.GetText();
+        var includeCodeLanguage = ClipboardCodeLanguageCheckBox.IsChecked == true;
+        return TryReadClipboardHtmlWithCodeBlocks(includeCodeLanguage, out var formattedText)
+            ? formattedText
+            : plainText;
+    }
+
+    private static bool TryReadClipboardHtmlWithCodeBlocks(bool includeCodeLanguage, out string formattedText)
+    {
+        formattedText = string.Empty;
+        if (!System.Windows.Clipboard.ContainsData(System.Windows.DataFormats.Html))
+        {
+            return false;
+        }
+
+        if (System.Windows.Clipboard.GetData(System.Windows.DataFormats.Html) is not string clipboardHtml
+            || string.IsNullOrWhiteSpace(clipboardHtml))
+        {
+            return false;
+        }
+
+        var fragment = ExtractClipboardHtmlFragment(clipboardHtml);
+        if (!Regex.IsMatch(fragment, @"<pre\b", RegexOptions.IgnoreCase))
+        {
+            return false;
+        }
+
+        formattedText = ConvertHtmlFragmentCodeBlocksToMarkdown(fragment, includeCodeLanguage);
+        return !string.IsNullOrWhiteSpace(formattedText);
+    }
+
+    private static string ExtractClipboardHtmlFragment(string clipboardHtml)
+    {
+        var startMarker = "<!--StartFragment-->";
+        var endMarker = "<!--EndFragment-->";
+        var startIndex = clipboardHtml.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
+        var endIndex = clipboardHtml.IndexOf(endMarker, StringComparison.OrdinalIgnoreCase);
+        if (startIndex >= 0 && endIndex > startIndex)
+        {
+            return clipboardHtml[(startIndex + startMarker.Length)..endIndex];
+        }
+
+        return clipboardHtml;
+    }
+
+    private static string ConvertHtmlFragmentCodeBlocksToMarkdown(string html, bool includeCodeLanguage)
+    {
+        var builder = new StringBuilder();
+        var lastIndex = 0;
+        var preMatches = Regex.Matches(html, @"<pre\b(?<attrs>[^>]*)>(?<body>.*?)</pre>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        foreach (Match match in preMatches)
+        {
+            builder.Append(HtmlToReadableText(html[lastIndex..match.Index]));
+
+            var language = ExtractCodeBlockLanguage(match.Value);
+            var codeText = HtmlToCodeText(match.Groups["body"].Value);
+            if (!string.IsNullOrWhiteSpace(codeText))
+            {
+                AppendSeparatedText(builder, FormatCodeBlockForSharing(language, codeText, includeCodeLanguage));
+            }
+
+            lastIndex = match.Index + match.Length;
+        }
+
+        builder.Append(HtmlToReadableText(html[lastIndex..]));
+        return NormalizeSharedText(builder.ToString());
+    }
+
+    private static void AppendSeparatedText(StringBuilder builder, string text)
+    {
+        if (builder.Length > 0 && !builder.ToString().EndsWith("\n\n", StringComparison.Ordinal))
+        {
+            builder.Append("\n\n");
+        }
+
+        builder.Append(text.Trim('\r', '\n'));
+        builder.Append("\n\n");
+    }
+
+    private static string FormatCodeBlockForSharing(string language, string codeText, bool includeCodeLanguage)
+    {
+        var startLabel = includeCodeLanguage && !string.Equals(language, "text", StringComparison.OrdinalIgnoreCase)
+            ? $"<<<| {language}"
+            : "<<<|";
+
+        return $"{startLabel}\n{codeText}\n|>>>";
+    }
+
+    private static string FormatCodeBlockForSharing(string language, string codeText)
+    {
+        var startLabel = string.Equals(language, "text", StringComparison.OrdinalIgnoreCase)
+            ? "--- 코드 시작 ---"
+            : $"--- 코드 시작: {language} ---";
+
+        return $"{startLabel}\n{codeText}\n--- 코드 끝 ---";
+    }
+
+    private static string ExtractCodeBlockLanguage(string html)
+    {
+        var classMatch = Regex.Match(html, @"class\s*=\s*[""'][^""']*(?:language|lang)-(?<lang>[a-zA-Z0-9#+._-]+)", RegexOptions.IgnoreCase);
+        if (classMatch.Success)
+        {
+            return NormalizeCodeLanguage(classMatch.Groups["lang"].Value);
+        }
+
+        var dataMatch = Regex.Match(html, @"data-language\s*=\s*[""'](?<lang>[^""']+)[""']", RegexOptions.IgnoreCase);
+        return dataMatch.Success
+            ? NormalizeCodeLanguage(dataMatch.Groups["lang"].Value)
+            : "text";
+    }
+
+    private static string NormalizeCodeLanguage(string language)
+    {
+        var normalized = Regex.Replace(language.Trim().ToLowerInvariant(), @"[^a-z0-9#+._-]", string.Empty);
+        return string.IsNullOrWhiteSpace(normalized) ? "text" : normalized;
+    }
+
+    private static string HtmlToReadableText(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return string.Empty;
+        }
+
+        var text = Regex.Replace(html, @"<(script|style)\b[^>]*>.*?</\1>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        text = Regex.Replace(text, @"<br\s*/?>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"</(p|div|h[1-6]|li|ul|ol|blockquote|section|article|tr)>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<li\b[^>]*>", "- ", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<[^>]+>", string.Empty);
+        text = WebUtility.HtmlDecode(text);
+        return NormalizeSharedText(text);
+    }
+
+    private static string HtmlToCodeText(string html)
+    {
+        var text = Regex.Replace(html, @"<br\s*/?>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"</(div|p|li)>", "\n", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"<[^>]+>", string.Empty);
+        text = WebUtility.HtmlDecode(text);
+        return text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim('\n');
+    }
+
+    private static string NormalizeSharedText(string text)
+    {
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        normalized = Regex.Replace(normalized, @"[ \t]+\n", "\n");
+        normalized = Regex.Replace(normalized, @"\n{3,}", "\n\n");
+        return normalized.Trim();
     }
 
     private async Task SyncLatestTextToGoogleDocsAsync(string text, bool isAutomatic)
@@ -1375,6 +1543,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             var settings = googleDocsClipboardService.Settings;
             GoogleDocsSyncCheckBox.IsChecked = settings.Enabled;
+            ClipboardCodeLanguageCheckBox.IsChecked = settings.IncludeCodeBlockLanguage;
             GoogleClientSecretsPathTextBox.Text = settings.ClientSecretsPath;
             GoogleDocsDocumentTextBox.Text = settings.DocumentId;
             GoogleDocsStatusText.Text = settings.Enabled ? "동기화 켜짐" : "동기화 꺼짐";
@@ -1391,7 +1560,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             Enabled = GoogleDocsSyncCheckBox.IsChecked == true,
             ClientSecretsPath = GoogleClientSecretsPathTextBox.Text.Trim(),
-            DocumentId = GoogleDocsClipboardService.ExtractDocumentId(GoogleDocsDocumentTextBox.Text)
+            DocumentId = GoogleDocsClipboardService.ExtractDocumentId(GoogleDocsDocumentTextBox.Text),
+            IncludeCodeBlockLanguage = ClipboardCodeLanguageCheckBox.IsChecked == true
         };
 
         googleDocsClipboardService.Save(settings);

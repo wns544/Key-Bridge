@@ -138,7 +138,22 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
     public async Task SendPointerAsync(DeviceProfile targetDevice, int x, int y)
     {
-        await Task.CompletedTask;
+        if (!IsRunning)
+        {
+            return;
+        }
+
+        await mouseReportLock.WaitAsync();
+        try
+        {
+            absolutePointerX = NormalizeAbsoluteCoordinate(x);
+            absolutePointerY = NormalizeAbsoluteCoordinate(y);
+            await NotifyAbsolutePointerAsync();
+        }
+        finally
+        {
+            mouseReportLock.Release();
+        }
     }
 
     public async Task SendMouseReportAsync(DeviceProfile targetDevice, sbyte deltaX, sbyte deltaY, byte buttons, sbyte wheel = 0, sbyte hWheel = 0)
@@ -212,10 +227,14 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
         inputReportCharacteristic = await CreateInputReportCharacteristicAsync();
         bootKeyboardInputReportCharacteristic = await CreateBootKeyboardInputReportCharacteristicAsync();
         mouseInputReportCharacteristic = await CreateMouseInputReportCharacteristicAsync();
+        absolutePointerInputReportCharacteristic = await CreateAbsolutePointerInputReportCharacteristicAsync();
         consumerControlInputReportCharacteristic = await CreateConsumerControlInputReportCharacteristicAsync();
         inputReportCharacteristic.SubscribedClientsChanged += (_, _) => { UpdateKeyboardSubscriberState(); };
         bootKeyboardInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { UpdateKeyboardSubscriberState(); };
         mouseInputReportCharacteristic.SubscribedClientsChanged += (c, _) => { 
+            UpdateMouseSubscriberState();
+        };
+        absolutePointerInputReportCharacteristic.SubscribedClientsChanged += (_, _) => {
             UpdateMouseSubscriberState();
         };
         consumerControlInputReportCharacteristic.SubscribedClientsChanged += (_, _) => { /* Log optional */ };
@@ -259,7 +278,8 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
 
     private void UpdateMouseSubscriberState()
     {
-        var connected = GetSubscribedClientCount(mouseInputReportCharacteristic, "mouse input report") > 0;
+        var connected = GetSubscribedClientCount(mouseInputReportCharacteristic, "mouse input report") > 0
+            || GetSubscribedClientCount(absolutePointerInputReportCharacteristic, "absolute pointer input report") > 0;
 
         if (connected == hasMouseSubscriber)
         {
@@ -411,7 +431,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             {
                 if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
                 if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
-                if (characteristic == mouseInputReportCharacteristic) hasMouseSubscriber = false;
+                if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
                 UpdateConnectionState();
             }
         }
@@ -420,7 +440,7 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             DiagnosticMessage?.Invoke(this, $"Warning: {name} notification timed out (200ms).");
             if (characteristic == inputReportCharacteristic) hasKeyboardSubscriber = false;
             if (characteristic == bootKeyboardInputReportCharacteristic) hasBootKeyboardSubscriber = false;
-            if (characteristic == mouseInputReportCharacteristic) hasMouseSubscriber = false;
+            if (characteristic == mouseInputReportCharacteristic || characteristic == absolutePointerInputReportCharacteristic) hasMouseSubscriber = false;
             UpdateConnectionState();
         }
         catch (Exception ex) { DiagnosticMessage?.Invoke(this, $"Error in {name} notification: {ex.Message}"); }
@@ -453,6 +473,13 @@ public sealed class BluetoothHidBridgeService : IHidBridgeService
             0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38,
             0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x03,
             0x81, 0x06,
+            0xC0, 0xC0,
+            0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, AbsolutePointerInputReportId,
+            0x09, 0x01, 0xA1, 0x00,
+            0x09, 0x30, 0x09, 0x31,
+            0x15, 0x00, 0x26, 0xFF, 0x7F,
+            0x75, 0x10, 0x95, 0x02,
+            0x81, 0x02,
             0xC0, 0xC0,
             0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01, 0x85, ConsumerControlInputReportId,
             0x15, 0x00, 0x26, 0xFF, 0x03, 0x19, 0x00, 0x2A,

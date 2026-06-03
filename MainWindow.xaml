@@ -771,6 +771,11 @@
                                               Content="클립보드 변경 시 자동 공유"
                                               IsChecked="{Binding IsChecked, ElementName=AutoClipboardShareCheckBox}"
                                               Margin="0,7,0,4" />
+                                    <CheckBox x:Name="ClipboardCodeLanguageCheckBox"
+                                              Content="코드블록 시작 표시줄에 언어명 붙이기"
+                                              Margin="0,3,0,4"
+                                              Checked="ClipboardCodeLanguageCheckBox_Changed"
+                                              Unchecked="ClipboardCodeLanguageCheckBox_Changed" />
                                     <TextBlock Text="텍스트, 이미지, 파일을 iPad의 /clipboard 페이지로 자동 갱신합니다."
                                                Style="{StaticResource CaptionText}" />
                                 </StackPanel>
