@@ -23,6 +23,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int ClipboardTypingStartDelayMs = 350;
     private const int ClipboardCharacterHoldMs = 25;
     private const int ClipboardCharacterReleaseMs = 15;
+    private const int AutoClipboardShareDebounceMs = 700;
+    private const int AutoClipboardStableReadDelayMs = 150;
+    private const int GoogleDocsDuplicateSyncWindowMs = 5000;
     private const int InputSourceToggleHoldMs = 100;
     private const int InputSourceToggleSettleMs = 450;
 
@@ -128,6 +131,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool hasShownBridgeConnectedToast;
     private bool hasShownBridgeConnectionFailureToast;
     private CancellationTokenSource? clipboardTypingCancellation;
+    private CancellationTokenSource? autoClipboardShareCancellation;
     private CancellationTokenSource? bridgeConnectionToastCancellation;
     private CancellationTokenSource? mouseSendLoopCancellation;
     private byte mouseButtons;
@@ -219,7 +223,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             pressedKeys.Clear();
             ResetMouseState();
             ReleaseLocalMouseButtons();
-            inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
+            SuppressKeysCheckBox.IsChecked = true;
+            inputHookService.SuppressForwardedKeys = true;
             inputHookService.AlwaysSuppressWindowsKeyShortcuts = true;
             inputHookService.EnableClipboardTypingShortcut = false;
             inputHookService.SuppressForwardedPointerEvents = isBridgeInputEnabled && bridgeService.IsRunning && isMouseSignalEnabled;
@@ -576,6 +581,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void SuppressKeysCheckBox_Changed(object sender, RoutedEventArgs e)
     {
+        if (isBridgeInputEnabled && SuppressKeysCheckBox.IsChecked != true)
+        {
+            SuppressKeysCheckBox.IsChecked = true;
+            AddActivity("System", "iPad 입력 모드에서는 PC 오입력을 막기 위해 키 입력 차단을 유지합니다.");
+            return;
+        }
+
         inputHookService.SuppressForwardedKeys = SuppressKeysCheckBox.IsChecked == true;
         AddActivity("System", inputHookService.SuppressForwardedKeys
             ? "브릿지 사용 중 노트북 입력을 차단합니다."
@@ -2684,6 +2696,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UnregisterClipboardHotKeys();
         trayIcon?.Dispose();
         trayIcon = null;
+        autoClipboardShareCancellation?.Cancel();
+        autoClipboardShareCancellation?.Dispose();
+        autoClipboardShareCancellation = null;
 
         if (bridgeService.IsRunning)
         {
