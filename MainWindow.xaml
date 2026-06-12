@@ -776,6 +776,11 @@
                                               Margin="0,3,0,4"
                                               Checked="ClipboardCodeLanguageCheckBox_Changed"
                                               Unchecked="ClipboardCodeLanguageCheckBox_Changed" />
+                                    <CheckBox x:Name="ClipboardBracketMarkerCheckBox"
+                                              Content="코드블록 표식을 &lt;&lt;&lt;] / [&gt;&gt;&gt; 로 쓰기"
+                                              Margin="0,3,0,4"
+                                              Checked="ClipboardBracketMarkerCheckBox_Changed"
+                                              Unchecked="ClipboardBracketMarkerCheckBox_Changed" />
                                     <TextBlock Text="텍스트, 이미지, 파일을 iPad의 /clipboard 페이지로 자동 갱신합니다."
                                                Style="{StaticResource CaptionText}" />
                                 </StackPanel>

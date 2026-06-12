@@ -74,6 +74,11 @@ public sealed class GoogleDocsClipboardService : IDisposable
 
     public async Task ReplaceLatestTextAsync(string text, CancellationToken cancellationToken = default)
     {
+        await ReplaceLatestTextAsync(text, [], cancellationToken);
+    }
+
+    public async Task ReplaceLatestTextAsync(string text, IReadOnlyCollection<GoogleDocsTextStyleRange> styleRanges, CancellationToken cancellationToken = default)
+    {
         if (!Settings.Enabled || string.IsNullOrWhiteSpace(text))
         {
             return;
@@ -86,7 +91,9 @@ public sealed class GoogleDocsClipboardService : IDisposable
             var service = await GetDocsServiceAsync(cancellationToken);
             var document = await service.Documents.Get(Settings.DocumentId).ExecuteAsync(cancellationToken);
             var endIndex = document.Body?.Content?.LastOrDefault()?.EndIndex ?? 1;
-            var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+            var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .TrimEnd('\n');
             var requests = new List<Request>();
 
             if (endIndex > 2)
@@ -112,6 +119,39 @@ public sealed class GoogleDocsClipboardService : IDisposable
                     Text = normalizedText
                 }
             });
+
+            requests.Add(new Request
+            {
+                UpdateTextStyle = new UpdateTextStyleRequest
+                {
+                    Range = new Google.Apis.Docs.v1.Data.Range
+                    {
+                        StartIndex = 1,
+                        EndIndex = 1 + normalizedText.Length
+                    },
+                    TextStyle = new TextStyle { Bold = false },
+                    Fields = "bold"
+                }
+            });
+
+            foreach (var styleRange in styleRanges
+                .Where(range => range.Bold && range.StartIndex >= 0 && range.EndIndex > range.StartIndex && range.EndIndex <= normalizedText.Length)
+                .OrderBy(range => range.StartIndex))
+            {
+                requests.Add(new Request
+                {
+                    UpdateTextStyle = new UpdateTextStyleRequest
+                    {
+                        Range = new Google.Apis.Docs.v1.Data.Range
+                        {
+                            StartIndex = 1 + styleRange.StartIndex,
+                            EndIndex = 1 + styleRange.EndIndex
+                        },
+                        TextStyle = new TextStyle { Bold = true },
+                        Fields = "bold"
+                    }
+                });
+            }
 
             var update = new BatchUpdateDocumentRequest { Requests = requests };
             await service.Documents.BatchUpdate(update, Settings.DocumentId).ExecuteAsync(cancellationToken);
@@ -295,6 +335,8 @@ public sealed class GoogleDocsClipboardService : IDisposable
     }
 }
 
+public sealed record GoogleDocsTextStyleRange(int StartIndex, int EndIndex, bool Bold);
+
 public sealed record GoogleDocsClipboardSettings
 {
     public bool Enabled { get; init; }
@@ -304,6 +346,8 @@ public sealed record GoogleDocsClipboardSettings
     public string DocumentId { get; init; } = string.Empty;
 
     public bool IncludeCodeBlockLanguage { get; init; }
+
+    public bool UseBracketCodeBlockMarkers { get; init; }
 }
 
 public sealed record GoogleDriveImageUploadResult(string FileId, string Url);

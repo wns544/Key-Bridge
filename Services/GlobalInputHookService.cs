@@ -173,6 +173,7 @@ public sealed class GlobalInputHookService : IDisposable
             var hookInfo = Marshal.PtrToStructure<KbdLlHookStruct>(lParam);
             var virtualKey = (int)hookInfo.VkCode;
             var isDown = wParam == WmKeyDown || wParam == WmSysKeyDown;
+            PruneReleasedModifierKeys(virtualKey);
 
             if (isDown)
             {
@@ -345,7 +346,7 @@ public sealed class GlobalInputHookService : IDisposable
             return false;
         }
 
-        return IsControlDown() && IsAltDown();
+        return IsControlDown() && !IsShiftDown();
     }
 
     private bool IsClipboardTypingCancelChord(int virtualKey)
@@ -382,15 +383,17 @@ public sealed class GlobalInputHookService : IDisposable
 
     private bool IsBridgeToggleChord(int virtualKey)
     {
-        if (virtualKey != VkQ
-            && virtualKey != VkMenu
-            && virtualKey != VkLMenu
-            && virtualKey != VkRMenu)
+        if (virtualKey == VkQ)
         {
-            return false;
+            return IsAltDown();
         }
 
-        return IsAltDown() && IsQDown();
+        if (IsAltKey(virtualKey))
+        {
+            return IsQDown();
+        }
+
+        return false;
     }
 
     private bool IsMouseSignalToggleChord(int virtualKey)
@@ -493,6 +496,34 @@ public sealed class GlobalInputHookService : IDisposable
             || (GetAsyncKeyState(VkMenu) & 0x8000) != 0
             || (GetAsyncKeyState(VkLMenu) & 0x8000) != 0
             || (GetAsyncKeyState(VkRMenu) & 0x8000) != 0;
+    }
+
+    private void PruneReleasedModifierKeys(int currentVirtualKey)
+    {
+        foreach (var virtualKey in new[] { VkControl, VkLControl, VkRControl, VkMenu, VkLMenu, VkRMenu })
+        {
+            if (virtualKey != currentVirtualKey && !IsPhysicalKeyDown(virtualKey))
+            {
+                downVirtualKeys.Remove(virtualKey);
+            }
+        }
+    }
+
+    private static bool IsAltKey(int virtualKey)
+    {
+        return virtualKey is VkMenu or VkLMenu or VkRMenu;
+    }
+
+    private static bool IsPhysicalAltDown()
+    {
+        return IsPhysicalKeyDown(VkMenu)
+            || IsPhysicalKeyDown(VkLMenu)
+            || IsPhysicalKeyDown(VkRMenu);
+    }
+
+    private static bool IsPhysicalKeyDown(int virtualKey)
+    {
+        return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
     }
 
     private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);

@@ -30,6 +30,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int GoogleDocsDuplicateSyncWindowMs = 5000;
     private const int InputSourceToggleHoldMs = 100;
     private const int InputSourceToggleSettleMs = 450;
+    private const int ActivityLogRetentionDays = 7;
+    private static readonly string ActivityLogDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "KeyBridge",
+        "Logs");
+    private static readonly object ActivityLogSync = new();
 
     private const int WmMouseMove = 0x0200;
     private const int WmLButtonDown = 0x0201;
@@ -79,6 +85,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const byte VkRMenu = 0xA5;
     private const byte VkLWin = 0x5B;
     private const byte VkRWin = 0x5C;
+    private const int VkEscape = 0x1B;
+    private const int VkQ = 0x51;
     private const int VkLButton = 0x01;
     private const int VkRButton = 0x02;
     private const int VkMButton = 0x04;
@@ -86,6 +94,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int VkF4 = 0x73;
     private const int VkI = 0x49;
     private const int VkV = 0x56;
+    private const int VkOem1 = 0xBA;
+    private const int VkOemPlus = 0xBB;
+    private const int VkOemComma = 0xBC;
+    private const int VkOemMinus = 0xBD;
+    private const int VkOemPeriod = 0xBE;
+    private const int VkOem2 = 0xBF;
+    private const int VkOem3 = 0xC0;
+    private const int VkOem4 = 0xDB;
+    private const int VkOem5 = 0xDC;
+    private const int VkOem6 = 0xDD;
+    private const int VkOem7 = 0xDE;
     private const ushort ConsumerMute = 0x00E2;
     private const ushort ConsumerVolumeIncrement = 0x00E9;
     private const ushort ConsumerVolumeDecrement = 0x00EA;
@@ -123,6 +142,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool mouseSendLoopRunning;
     private bool isMouseSignalEnabled;
     private bool isBridgeInputEnabled;
+    private bool allowInputCaptureOnConnected;
     private bool isAutoClipboardShareEnabled;
     private bool isAutoClipboardShareInProgress;
     private bool isGoogleDocsSyncInProgress;
@@ -147,6 +167,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         LoadWindowIcon();
+        PruneOldActivityLogs();
+        TraceActivity("Trace", $"App startup. pid={Environment.ProcessId}, exe={Environment.ProcessPath}");
         googleDocsClipboardService.Load();
 
         inputHookService.KeyChanged += InputHookService_KeyChanged;
@@ -167,6 +189,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         inputHookService.ShouldCaptureForwardedInput = () => isBridgeInputEnabled && bridgeService.IsRunning;
         UpdatePointerCapture();
         inputHookService.Start();
+        TraceActivity("Trace", $"Input hooks started. {DescribeBridgeSafetyState()}");
         Closing += Window_Closing;
         StateChanged += Window_StateChanged;
         NetworkChange.NetworkAddressChanged += NetworkChange_NetworkAddressChanged;
@@ -218,22 +241,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         try
         {
+            TraceActivity("Trace", $"StartBridgeAsync begin. {DescribeBridgeSafetyState()}");
             if (!bridgeService.IsRunning)
             {
+                TraceActivity("Trace", "Starting BLE HID service.");
                 await bridgeService.StartAsync(activeDevice);
+                TraceActivity("Trace", $"BLE HID service started. {DescribeBridgeSafetyState()}");
             }
 
-            isBridgeInputEnabled = true;
+            allowInputCaptureOnConnected = true;
+            isBridgeInputEnabled = bridgeService.HasKeyboardSubscriber || bridgeService.HasMouseSubscriber;
             await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
             pressedKeys.Clear();
             ResetMouseState();
             ReleaseLocalMouseButtons();
-            SuppressKeysCheckBox.IsChecked = true;
-            inputHookService.SuppressForwardedKeys = true;
-            inputHookService.AlwaysSuppressWindowsKeyShortcuts = true;
+            SuppressKeysCheckBox.IsChecked = isBridgeInputEnabled;
+            inputHookService.SuppressForwardedKeys = isBridgeInputEnabled;
+            inputHookService.AlwaysSuppressWindowsKeyShortcuts = isBridgeInputEnabled;
             inputHookService.EnableClipboardTypingShortcut = false;
             inputHookService.SuppressForwardedPointerEvents = isBridgeInputEnabled && bridgeService.IsRunning && isMouseSignalEnabled;
             UpdatePointerCapture();
+            TraceActivity("Safety", $"StartBridgeAsync capture initialized. {DescribeBridgeSafetyState()}");
 
             BackendStateText.Text = "BLE HID";
             RemoteDeviceText.Text = "페어링 중입니다. iPad에서 '액세서리'를 찾으세요. 연결 후 이름이 바뀔 수 있습니다.";
@@ -243,6 +271,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            TraceActivity("Safety", $"StartBridgeAsync failed: {ex.GetType().Name}: {ex.Message}. {DescribeBridgeSafetyState()}");
             await bridgeService.StopAsync();
             AddActivity("브릿지", $"{ex.GetType().Name}: {ex.Message}");
             BackendStateText.Text = "실패";
@@ -252,9 +281,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task StopBridgeAsync(string message, bool stopService = false)
     {
+        TraceActivity("Trace", $"StopBridgeAsync begin. stopService={stopService}, message={message}, {DescribeBridgeSafetyState()}");
         StopMouseCaptureImmediately();
         pressedKeys.Clear();
         isBridgeInputEnabled = false;
+        allowInputCaptureOnConnected = false;
         if (bridgeService.IsRunning)
         {
             await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
@@ -271,6 +302,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ReleaseLocalMouseButtons();
         if (stopService)
         {
+            TraceActivity("Trace", "Stopping BLE HID service.");
             await bridgeService.StopAsync();
         }
         CancelBridgeConnectionFeedback();
@@ -280,10 +312,37 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         AddActivity("브릿지", message);
         RefreshStatus();
         ShowBridgeStatusToast("Key Bridge", "iPad", false, stopService ? "연결 해제" : "입력 해제");
+        TraceActivity("Safety", $"StopBridgeAsync end. {DescribeBridgeSafetyState()}");
+    }
+
+    private async Task EnableBridgeInputCaptureAsync(string message)
+    {
+        TraceActivity("Trace", $"EnableBridgeInputCaptureAsync requested. message={message}, {DescribeBridgeSafetyState()}");
+        if (!bridgeService.IsRunning || isBridgeInputEnabled || !allowInputCaptureOnConnected)
+        {
+            TraceActivity("Trace", $"EnableBridgeInputCaptureAsync skipped. {DescribeBridgeSafetyState()}");
+            return;
+        }
+
+        isBridgeInputEnabled = true;
+        pressedKeys.Clear();
+        await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
+        ResetMouseState();
+        ReleaseLocalMouseButtons();
+        SuppressKeysCheckBox.IsChecked = true;
+        inputHookService.SuppressForwardedKeys = true;
+        inputHookService.AlwaysSuppressWindowsKeyShortcuts = true;
+        inputHookService.EnableClipboardTypingShortcut = false;
+        inputHookService.SuppressForwardedPointerEvents = isMouseSignalEnabled;
+        UpdatePointerCapture();
+        AddActivity("브릿지", message);
+        RefreshStatus();
+        TraceActivity("Safety", $"EnableBridgeInputCaptureAsync enabled. {DescribeBridgeSafetyState()}");
     }
 
     private async Task ToggleBridgeAsync(string source)
     {
+        TraceActivity("Trace", $"ToggleBridgeAsync source={source}. {DescribeBridgeSafetyState()}");
         if (!isBridgeInputEnabled)
         {
             await StartBridgeAsync();
@@ -677,6 +736,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             : "Code block language labels disabled.");
     }
 
+    private void ClipboardBracketMarkerCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (isLoadingGoogleDocsSettings)
+        {
+            return;
+        }
+
+        SaveGoogleDocsSettingsFromUi();
+        AddActivity("Clipboard", ClipboardBracketMarkerCheckBox.IsChecked == true
+            ? "Code block markers set to <<<] / [>>>."
+            : "Code block markers set to <<<| / |>>>.");
+    }
+
     private void BrowseGoogleClientSecretsButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
@@ -743,6 +815,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
+            if (e.IsDown && IsLocalEscapeChord(e.VirtualKey))
+            {
+                TraceActivity("Safety", $"Local escape chord reached KeyChanged fallback. key={e.Key}, vk={e.VirtualKey}, {DescribeBridgeSafetyState()}");
+                ReleaseInputCaptureImmediately();
+                await StopBridgeAsync("긴급 중지: 로컬 탈출 단축키를 감지했습니다.");
+                return;
+            }
+
             if (TryGetConsumerControlUsage(e, out var consumerUsage))
             {
                 if (e.IsDown)
@@ -763,6 +843,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     await bridgeService.SendKeyboardStateAsync(activeDevice, new[] { e.CapturedKey });
                     await bridgeService.SendKeyboardStateAsync(activeDevice, Array.Empty<CapturedKey>());
                     AddActivity("키보드", $"{e.Key} -> 언어 전환");
+                }
+
+                return;
+            }
+
+            if (e.IsDown && TryGetShiftedSymbol(e.VirtualKey, out var shiftedSymbol) && IsShiftOnlyTextModifierActive())
+            {
+                pressedKeys.Remove(e.VirtualKey);
+                if (HidKeyboardReport.TryCreateTextInputReport(shiftedSymbol, out var shiftedSymbolReport))
+                {
+                    await bridgeService.SendKeyboardReportAsync(activeDevice, shiftedSymbolReport, $"shifted symbol '{shiftedSymbol}'", ClipboardCharacterHoldMs, ClipboardCharacterReleaseMs);
+                    AddActivity("키보드", $"Shift+{e.Key} -> '{shiftedSymbol}' one-shot");
                 }
 
                 return;
@@ -811,6 +903,82 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 or System.Windows.Input.Key.RightAlt;
     }
 
+    private bool IsShiftOnlyTextModifierActive()
+    {
+        return IsShiftPressed()
+            && !IsPressedOrPhysicallyDown(VkControl)
+            && !IsPressedOrPhysicallyDown(VkLControl)
+            && !IsPressedOrPhysicallyDown(VkRControl)
+            && !IsPressedOrPhysicallyDown(VkMenu)
+            && !IsPressedOrPhysicallyDown(VkLMenu)
+            && !IsPressedOrPhysicallyDown(VkRMenu)
+            && !IsPressedOrPhysicallyDown(VkLWin)
+            && !IsPressedOrPhysicallyDown(VkRWin);
+    }
+
+    private bool IsShiftPressed()
+    {
+        return IsPressedOrPhysicallyDown(VkShift)
+            || IsPressedOrPhysicallyDown(VkLShift)
+            || IsPressedOrPhysicallyDown(VkRShift);
+    }
+
+    private bool IsLocalEscapeChord(int virtualKey)
+    {
+        return (virtualKey == VkQ && IsAltPressed())
+            || (virtualKey == VkEscape && IsControlPressed());
+    }
+
+    private bool IsAltPressed()
+    {
+        return IsPressedOrPhysicallyDown(VkMenu)
+            || IsPressedOrPhysicallyDown(VkLMenu)
+            || IsPressedOrPhysicallyDown(VkRMenu);
+    }
+
+    private bool IsControlPressed()
+    {
+        return IsPressedOrPhysicallyDown(VkControl)
+            || IsPressedOrPhysicallyDown(VkLControl)
+            || IsPressedOrPhysicallyDown(VkRControl);
+    }
+
+    private bool IsPressedOrPhysicallyDown(int virtualKey)
+    {
+        return pressedKeys.ContainsKey(virtualKey) || (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+    }
+
+    private static bool TryGetShiftedSymbol(int virtualKey, out char symbol)
+    {
+        symbol = virtualKey switch
+        {
+            0x31 => '!',
+            0x32 => '@',
+            0x33 => '#',
+            0x34 => '$',
+            0x35 => '%',
+            0x36 => '^',
+            0x37 => '&',
+            0x38 => '*',
+            0x39 => '(',
+            0x30 => ')',
+            VkOemMinus => '_',
+            VkOemPlus => '+',
+            VkOem4 => '{',
+            VkOem6 => '}',
+            VkOem5 => '|',
+            VkOem1 => ':',
+            VkOem7 => '"',
+            VkOem3 => '~',
+            VkOemComma => '<',
+            VkOemPeriod => '>',
+            VkOem2 => '?',
+            _ => '\0'
+        };
+
+        return symbol != '\0';
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -820,6 +988,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _ = AddClipboardFormatListener(windowHandle);
         RegisterRawMouseInput(windowHandle);
         RegisterClipboardHotKeys(windowHandle);
+        TraceActivity("Trace", $"Source initialized. hwnd={windowHandle}, rawMouseRegistered=true, clipboardListener=true, {DescribeBridgeSafetyState()}");
     }
 
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -941,16 +1110,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void InputHookService_EmergencyStopRequested(object? sender, EventArgs e)
     {
-        Dispatcher.InvokeAsync(async () => await StopBridgeAsync("긴급 중지: Ctrl+Alt+Esc."));
+        TraceActivity("Safety", $"Emergency stop requested from input hook. Immediate release begins. {DescribeBridgeSafetyState()}");
+        ReleaseInputCaptureImmediately();
+        TraceActivity("Safety", $"Emergency immediate release finished. Dispatcher stop queued. {DescribeBridgeSafetyState()}");
+        Dispatcher.InvokeAsync(async () => await StopBridgeAsync("긴급 중지: Ctrl+Esc / Ctrl+Alt+Esc."));
     }
 
     private void InputHookService_BridgeToggleRequested(object? sender, EventArgs e)
     {
+        TraceActivity("InputHook", $"Alt+Q bridge toggle requested. {DescribeBridgeSafetyState()}");
         Dispatcher.InvokeAsync(async () => await ToggleBridgeAsync("Alt+Q"));
     }
 
     private void BridgeService_MouseSubscriberChanged(object? sender, bool isConnected)
     {
+        TraceActivity("Trace", $"MouseSubscriberChanged isConnected={isConnected}. {DescribeBridgeSafetyState()}");
         if (isConnected)
         {
             Dispatcher.InvokeAsync(async () =>
@@ -969,16 +1143,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void BridgeService_ConnectionStateChanged(object? sender, bool isConnected)
     {
-        Dispatcher.InvokeAsync(() =>
+        TraceActivity("Trace", $"ConnectionStateChanged received isConnected={isConnected}. {DescribeBridgeSafetyState()}");
+        Dispatcher.InvokeAsync(async () =>
         {
             if (!bridgeService.IsRunning)
             {
+                TraceActivity("Trace", $"ConnectionStateChanged ignored because service is not running. isConnected={isConnected}. {DescribeBridgeSafetyState()}");
                 return;
             }
 
             if (isConnected)
             {
+                TraceActivity("Safety", $"iPad HID connected event processing begins. {DescribeBridgeSafetyState()}");
                 CancelBridgeConnectionFeedback();
+
+                if (!allowInputCaptureOnConnected)
+                {
+                    AddActivity("브릿지", "iPad HID 재연결을 감지했지만 안전을 위해 입력 전달은 꺼둔 상태로 유지했습니다. 다시 보내려면 Alt+Q를 누르세요.");
+                    RefreshStatus();
+                    TraceActivity("Safety", $"iPad HID reconnected but auto input capture is blocked. {DescribeBridgeSafetyState()}");
+                    return;
+                }
 
                 if (!hasShownBridgeConnectedToast)
                 {
@@ -987,7 +1172,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     ShowBridgeStatusToast("iPad", "iPad", true, "연결");
                 }
 
+                await EnableBridgeInputCaptureAsync("iPad HID 연결 확인 후 입력 전달을 켰습니다.");
                 AddActivity("브릿지", "iPad HID 연결이 확인되었습니다.");
+                TraceActivity("Safety", $"iPad HID connected event processed. {DescribeBridgeSafetyState()}");
                 return;
             }
 
@@ -995,6 +1182,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 hasShownBridgeConnectedToast = false;
                 ShowBridgeStatusToast("iPad", "iPad", false, "연결 끊김");
+            }
+            if (isBridgeInputEnabled ||
+                inputHookService.SuppressForwardedKeys ||
+                inputHookService.AlwaysSuppressWindowsKeyShortcuts ||
+                inputHookService.SuppressForwardedPointerEvents)
+            {
+                TraceActivity("Safety", $"iPad HID disconnected while input capture was active. Releasing local input immediately. {DescribeBridgeSafetyState()}");
+                ReleaseInputCaptureImmediately();
+                AddActivity("브릿지", "iPad HID 연결이 끊겨 PC 입력을 즉시 복구했습니다. 다시 보내려면 Alt+Q를 누르세요.");
+                RefreshStatus();
+                TraceActivity("Safety", $"Disconnect safety release finished. {DescribeBridgeSafetyState()}");
             }
         });
     }
@@ -1350,12 +1548,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var plainText = System.Windows.Clipboard.GetText();
         var includeCodeLanguage = ClipboardCodeLanguageCheckBox.IsChecked == true;
-        return TryReadClipboardHtmlWithCodeBlocks(includeCodeLanguage, out var formattedText)
+        var useBracketCodeBlockMarkers = ClipboardBracketMarkerCheckBox.IsChecked == true;
+        return TryReadClipboardHtmlWithCodeBlocks(includeCodeLanguage, useBracketCodeBlockMarkers, out var formattedText)
             ? formattedText
             : plainText;
     }
 
-    private static bool TryReadClipboardHtmlWithCodeBlocks(bool includeCodeLanguage, out string formattedText)
+    private static bool TryReadClipboardHtmlWithCodeBlocks(bool includeCodeLanguage, bool useBracketCodeBlockMarkers, out string formattedText)
     {
         formattedText = string.Empty;
         if (!System.Windows.Clipboard.ContainsData(System.Windows.DataFormats.Html))
@@ -1375,7 +1574,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return false;
         }
 
-        formattedText = ConvertHtmlFragmentCodeBlocksToMarkdown(fragment, includeCodeLanguage);
+        formattedText = ConvertHtmlFragmentCodeBlocksToMarkdown(fragment, includeCodeLanguage, useBracketCodeBlockMarkers);
         return !string.IsNullOrWhiteSpace(formattedText);
     }
 
@@ -1393,7 +1592,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return clipboardHtml;
     }
 
-    private static string ConvertHtmlFragmentCodeBlocksToMarkdown(string html, bool includeCodeLanguage)
+    private static string ConvertHtmlFragmentCodeBlocksToMarkdown(string html, bool includeCodeLanguage, bool useBracketCodeBlockMarkers)
     {
         var builder = new StringBuilder();
         var lastIndex = 0;
@@ -1407,7 +1606,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var codeText = HtmlToCodeText(match.Groups["body"].Value);
             if (!string.IsNullOrWhiteSpace(codeText))
             {
-                AppendSeparatedText(builder, FormatCodeBlockForSharing(language, codeText, includeCodeLanguage));
+                AppendSeparatedText(builder, FormatCodeBlockForSharing(language, codeText, includeCodeLanguage, useBracketCodeBlockMarkers));
             }
 
             lastIndex = match.Index + match.Length;
@@ -1428,13 +1627,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         builder.Append("\n\n");
     }
 
-    private static string FormatCodeBlockForSharing(string language, string codeText, bool includeCodeLanguage)
+    private static string FormatCodeBlockForSharing(string language, string codeText, bool includeCodeLanguage, bool useBracketCodeBlockMarkers)
     {
+        var markerStart = useBracketCodeBlockMarkers ? "<<<]" : "<<<|";
+        var markerEnd = useBracketCodeBlockMarkers ? "[>>>" : "|>>>";
         var startLabel = includeCodeLanguage && !string.Equals(language, "text", StringComparison.OrdinalIgnoreCase)
-            ? $"<<<| {language}"
-            : "<<<|";
+            ? $"{markerStart} {language}"
+            : markerStart;
 
-        return $"{startLabel}\n{codeText}\n|>>>";
+        return $"{startLabel}\n{codeText}\n{markerEnd}";
     }
 
     private static string FormatCodeBlockForSharing(string language, string codeText)
@@ -1479,7 +1680,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         text = Regex.Replace(text, @"<li\b[^>]*>", "- ", RegexOptions.IgnoreCase);
         text = Regex.Replace(text, @"<[^>]+>", string.Empty);
         text = WebUtility.HtmlDecode(text);
-        return NormalizeSharedText(text);
+        return CollapseDuplicateReadableText(NormalizeSharedText(text));
     }
 
     private static string HtmlToCodeText(string html)
@@ -1499,6 +1700,223 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return normalized.Trim();
     }
 
+    private static string CollapseDuplicateReadableText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var paragraphs = Regex.Split(text, @"\n{2,}");
+        var collapsedParagraphs = new List<string>();
+        string? previousParagraphKey = null;
+
+        foreach (var paragraph in paragraphs)
+        {
+            var collapsedParagraph = CollapseDuplicateReadableLines(CollapseRepeatedHalf(paragraph.Trim()));
+            if (string.IsNullOrWhiteSpace(collapsedParagraph))
+            {
+                continue;
+            }
+
+            var paragraphKey = NormalizeDuplicateComparisonKey(collapsedParagraph);
+            if (string.Equals(paragraphKey, previousParagraphKey, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            collapsedParagraphs.Add(collapsedParagraph);
+            previousParagraphKey = paragraphKey;
+        }
+
+        return string.Join("\n\n", collapsedParagraphs);
+    }
+
+    private static string CollapseDuplicateReadableLines(string text)
+    {
+        var lines = text.Split('\n');
+        var collapsedLines = new List<string>();
+        string? previousLineKey = null;
+
+        foreach (var line in lines)
+        {
+            var collapsedLine = CollapseRepeatedHalf(line.TrimEnd());
+            var lineKey = NormalizeDuplicateComparisonKey(collapsedLine);
+            if (!string.IsNullOrWhiteSpace(lineKey)
+                && string.Equals(lineKey, previousLineKey, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            collapsedLines.Add(collapsedLine);
+            previousLineKey = lineKey;
+        }
+
+        return string.Join("\n", collapsedLines).Trim();
+    }
+
+    private static string CollapseRepeatedHalf(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length < 16)
+        {
+            return text;
+        }
+
+        var halfLength = trimmed.Length / 2;
+        for (var splitIndex = Math.Max(8, halfLength - 2); splitIndex <= Math.Min(trimmed.Length - 8, halfLength + 2); splitIndex++)
+        {
+            var firstHalf = trimmed[..splitIndex];
+            var secondHalf = trimmed[splitIndex..];
+            if (string.Equals(NormalizeDuplicateComparisonKey(firstHalf), NormalizeDuplicateComparisonKey(secondHalf), StringComparison.Ordinal))
+            {
+                return firstHalf.Trim();
+            }
+        }
+
+        return text;
+    }
+
+    private static string NormalizeDuplicateComparisonKey(string text)
+    {
+        return Regex.Replace(text.Trim(), @"\s+", " ");
+    }
+
+    private static bool TryCreateGoogleDocsBoldRanges(string normalizedText, out IReadOnlyList<GoogleDocsTextStyleRange> boldRanges)
+    {
+        boldRanges = [];
+        if (string.IsNullOrWhiteSpace(normalizedText)
+            || !System.Windows.Clipboard.ContainsData(System.Windows.DataFormats.Html)
+            || System.Windows.Clipboard.GetData(System.Windows.DataFormats.Html) is not string clipboardHtml
+            || string.IsNullOrWhiteSpace(clipboardHtml))
+        {
+            return false;
+        }
+
+        var fragment = ExtractClipboardHtmlFragment(clipboardHtml);
+        var candidates = ExtractBoldTextCandidates(fragment)
+            .Select(NormalizeSharedText)
+            .Where(candidate => candidate.Count(character => !char.IsWhiteSpace(character)) >= 2)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return false;
+        }
+
+        var ranges = new List<GoogleDocsTextStyleRange>();
+        foreach (var candidate in candidates)
+        {
+            ranges.AddRange(FindTextRanges(normalizedText, candidate));
+        }
+        ranges.AddRange(FindNumberedHeadingRanges(normalizedText));
+
+        boldRanges = MergeStyleRanges(ranges);
+        return boldRanges.Count > 0;
+    }
+
+    private static IEnumerable<string> ExtractBoldTextCandidates(string html)
+    {
+        foreach (Match match in Regex.Matches(html, @"<h[1-6]\b[^>]*>(?<body>.*?)</h[1-6]>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            var text = HtmlToReadableText(match.Groups["body"].Value);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                yield return text;
+            }
+        }
+
+        foreach (Match match in Regex.Matches(html, @"<(?:strong|b)\b[^>]*>(?<body>.*?)</(?:strong|b)>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            var text = HtmlToReadableText(match.Groups["body"].Value);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                yield return text;
+            }
+        }
+
+        foreach (Match match in Regex.Matches(html, @"<(?<tag>[a-z0-9]+)\b(?<attrs>[^>]*)>(?<body>.*?)</\k<tag>>", RegexOptions.IgnoreCase | RegexOptions.Singleline))
+        {
+            if (!LooksBoldByStyle(match.Groups["attrs"].Value))
+            {
+                continue;
+            }
+
+            var text = HtmlToReadableText(match.Groups["body"].Value);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                yield return text;
+            }
+        }
+    }
+
+    private static bool LooksBoldByStyle(string attributes)
+    {
+        return Regex.IsMatch(attributes, @"font-weight\s*:\s*(bold|bolder|[6-9]00)", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(attributes, @"\bfont-(?:semibold|bold|extrabold|black)\b", RegexOptions.IgnoreCase)
+            || Regex.IsMatch(attributes, @"\b(?:font-semibold|font-bold|font-extrabold|font-black)\b", RegexOptions.IgnoreCase);
+    }
+
+    private static IEnumerable<GoogleDocsTextStyleRange> FindTextRanges(string text, string candidate)
+    {
+        var pattern = string.Join(@"\s+", Regex.Split(candidate.Trim(), @"\s+").Select(Regex.Escape));
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            yield break;
+        }
+
+        foreach (Match match in Regex.Matches(text, pattern))
+        {
+            yield return new GoogleDocsTextStyleRange(match.Index, match.Index + match.Length, Bold: true);
+        }
+    }
+
+    private static IEnumerable<GoogleDocsTextStyleRange> FindNumberedHeadingRanges(string text)
+    {
+        foreach (Match match in Regex.Matches(text, @"(?m)^(?<line>\s*\d{1,2}\.\s+\S.{0,78})$"))
+        {
+            var line = match.Groups["line"].Value.Trim();
+            if (line.EndsWith("다.", StringComparison.Ordinal) || line.Count(character => character == '.') > 1)
+            {
+                continue;
+            }
+
+            yield return new GoogleDocsTextStyleRange(match.Index, match.Index + match.Length, Bold: true);
+        }
+    }
+
+    private static IReadOnlyList<GoogleDocsTextStyleRange> MergeStyleRanges(IEnumerable<GoogleDocsTextStyleRange> ranges)
+    {
+        var ordered = ranges
+            .Where(range => range.EndIndex > range.StartIndex)
+            .OrderBy(range => range.StartIndex)
+            .ThenBy(range => range.EndIndex)
+            .ToList();
+        if (ordered.Count == 0)
+        {
+            return [];
+        }
+
+        var merged = new List<GoogleDocsTextStyleRange>();
+        var current = ordered[0];
+        for (var index = 1; index < ordered.Count; index++)
+        {
+            var next = ordered[index];
+            if (next.StartIndex <= current.EndIndex)
+            {
+                current = current with { EndIndex = Math.Max(current.EndIndex, next.EndIndex) };
+                continue;
+            }
+
+            merged.Add(current);
+            current = next;
+        }
+
+        merged.Add(current);
+        return merged;
+    }
+
     private async Task SyncLatestTextToGoogleDocsAsync(string text, bool isAutomatic)
     {
         if (GoogleDocsSyncCheckBox.IsChecked != true || isGoogleDocsSyncInProgress)
@@ -1506,7 +1924,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .TrimEnd('\n');
         if (string.Equals(lastGoogleDocsSyncedText, normalizedText, StringComparison.Ordinal)
             && (DateTime.Now - lastGoogleDocsSyncedAt).TotalMilliseconds < GoogleDocsDuplicateSyncWindowMs)
         {
@@ -1517,13 +1937,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         isGoogleDocsSyncInProgress = true;
         try
         {
-            await googleDocsClipboardService.ReplaceLatestTextAsync(normalizedText);
+            var styleRanges = TryCreateGoogleDocsBoldRanges(normalizedText, out var boldRanges)
+                ? boldRanges
+                : [];
+            await googleDocsClipboardService.ReplaceLatestTextAsync(normalizedText, styleRanges);
             lastGoogleDocsSyncedText = normalizedText;
             lastGoogleDocsSyncedAt = DateTime.Now;
             GoogleDocsStatusText.Text = "최근 텍스트 동기화됨";
             AddActivity("GoogleDocs", isAutomatic
-                ? $"Auto synced latest text. chars={normalizedText.Length}"
-                : $"Synced latest text. chars={normalizedText.Length}");
+                ? $"Auto synced latest text. chars={normalizedText.Length}, boldRanges={styleRanges.Count}"
+                : $"Synced latest text. chars={normalizedText.Length}, boldRanges={styleRanges.Count}");
         }
         catch (Exception ex)
         {
@@ -1544,6 +1967,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var settings = googleDocsClipboardService.Settings;
             GoogleDocsSyncCheckBox.IsChecked = settings.Enabled;
             ClipboardCodeLanguageCheckBox.IsChecked = settings.IncludeCodeBlockLanguage;
+            ClipboardBracketMarkerCheckBox.IsChecked = settings.UseBracketCodeBlockMarkers;
             GoogleClientSecretsPathTextBox.Text = settings.ClientSecretsPath;
             GoogleDocsDocumentTextBox.Text = settings.DocumentId;
             GoogleDocsStatusText.Text = settings.Enabled ? "동기화 켜짐" : "동기화 꺼짐";
@@ -1561,7 +1985,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Enabled = GoogleDocsSyncCheckBox.IsChecked == true,
             ClientSecretsPath = GoogleClientSecretsPathTextBox.Text.Trim(),
             DocumentId = GoogleDocsClipboardService.ExtractDocumentId(GoogleDocsDocumentTextBox.Text),
-            IncludeCodeBlockLanguage = ClipboardCodeLanguageCheckBox.IsChecked == true
+            IncludeCodeBlockLanguage = ClipboardCodeLanguageCheckBox.IsChecked == true,
+            UseBracketCodeBlockMarkers = ClipboardBracketMarkerCheckBox.IsChecked == true
         };
 
         googleDocsClipboardService.Save(settings);
@@ -2171,11 +2596,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void StopMouseCaptureImmediately()
     {
+        TraceActivity("Safety", $"StopMouseCaptureImmediately begin. {DescribeBridgeSafetyState()}");
         CancelMouseSendLoop();
         inputHookService.SuppressForwardedPointerEvents = false;
         inputHookService.CapturePointerEvents = false;
         ResetMouseState();
         ReleaseLocalMouseButtons();
+        TraceActivity("Safety", $"StopMouseCaptureImmediately end. {DescribeBridgeSafetyState()}");
+    }
+
+    private void ReleaseInputCaptureImmediately()
+    {
+        TraceActivity("Safety", $"ReleaseInputCaptureImmediately begin. {DescribeBridgeSafetyState()}");
+        isBridgeInputEnabled = false;
+        allowInputCaptureOnConnected = false;
+        inputHookService.SuppressForwardedKeys = false;
+        inputHookService.AlwaysSuppressWindowsKeyShortcuts = false;
+        inputHookService.EnableClipboardTypingShortcut = false;
+        inputHookService.ResetPressedKeyState();
+        StopMouseCaptureImmediately();
+        ReleaseLocalModifierKeys();
+        TraceActivity("Safety", $"ReleaseInputCaptureImmediately end. {DescribeBridgeSafetyState()}");
     }
 
     private bool ShouldForwardMouseInput()
@@ -2674,7 +3115,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void UpdatePointerCapture()
     {
+        TraceActivity("Trace", $"UpdatePointerCapture requested. targetCapture={isBridgeInputEnabled && bridgeService.IsRunning && isMouseSignalEnabled}, {DescribeBridgeSafetyState()}");
         inputHookService.CapturePointerEvents = isBridgeInputEnabled && bridgeService.IsRunning && isMouseSignalEnabled;
+        TraceActivity("Trace", $"UpdatePointerCapture applied. {DescribeBridgeSafetyState()}");
     }
 
     private void UpdateMouseButtons(ushort buttonFlags)
@@ -2778,11 +3221,66 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void AddActivity(string channel, string message)
     {
-        ActivityEvents.Insert(0, new ActivityEvent(DateTime.Now, channel, message));
+        var now = DateTime.Now;
+        ActivityEvents.Insert(0, new ActivityEvent(now, channel, message));
+        AppendActivityLog(now, channel, message);
 
         while (ActivityEvents.Count > 80)
         {
             ActivityEvents.RemoveAt(ActivityEvents.Count - 1);
+        }
+    }
+
+    private void TraceActivity(string channel, string message)
+    {
+        AppendActivityLog(DateTime.Now, channel, message);
+    }
+
+    private string DescribeBridgeSafetyState()
+    {
+        return $"service={bridgeService.IsRunning}, inputEnabled={isBridgeInputEnabled}, autoCapture={allowInputCaptureOnConnected}, keyboardSub={bridgeService.HasKeyboardSubscriber}, mouseSub={bridgeService.HasMouseSubscriber}, mouseSignal={isMouseSignalEnabled}, suppressKeys={inputHookService.SuppressForwardedKeys}, suppressWinShortcuts={inputHookService.AlwaysSuppressWindowsKeyShortcuts}, suppressPointer={inputHookService.SuppressForwardedPointerEvents}, pressedKeys={pressedKeys.Count}, mouseButtons={mouseButtons}";
+    }
+
+    private static void AppendActivityLog(DateTime timestamp, string channel, string message)
+    {
+        try
+        {
+            lock (ActivityLogSync)
+            {
+                Directory.CreateDirectory(ActivityLogDirectory);
+                var logPath = Path.Combine(ActivityLogDirectory, $"{timestamp:yyyy-MM-dd}.log");
+                var line = $"{timestamp:yyyy-MM-dd HH:mm:ss.fff}\t{channel}\t{message}{Environment.NewLine}";
+                File.AppendAllText(logPath, line, Encoding.UTF8);
+            }
+        }
+        catch
+        {
+            // Logging must never interfere with input recovery.
+        }
+    }
+
+    private static void PruneOldActivityLogs()
+    {
+        try
+        {
+            if (!Directory.Exists(ActivityLogDirectory))
+            {
+                return;
+            }
+
+            var cutoff = DateTime.Now.Date.AddDays(-ActivityLogRetentionDays);
+            foreach (var file in Directory.EnumerateFiles(ActivityLogDirectory, "*.log"))
+            {
+                var lastWriteDate = File.GetLastWriteTime(file).Date;
+                if (lastWriteDate < cutoff)
+                {
+                    File.Delete(file);
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort retention cleanup.
         }
     }
 
@@ -2883,6 +3381,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        TraceActivity("Trace", $"Window_Closing. isExitRequested={isExitRequested}, {DescribeBridgeSafetyState()}");
         if (isExitRequested)
         {
             return;
@@ -2894,6 +3393,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void HideToTray()
     {
+        TraceActivity("Trace", $"HideToTray. {DescribeBridgeSafetyState()}");
         ShowInTaskbar = false;
         Hide();
 
@@ -2908,14 +3408,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ShowFromTray()
     {
+        TraceActivity("Trace", $"ShowFromTray. {DescribeBridgeSafetyState()}");
         Show();
         WindowState = WindowState.Normal;
         ShowInTaskbar = true;
         Activate();
     }
 
+    public void ShowFromExternalActivation()
+    {
+        TraceActivity("Trace", $"External activation received. {DescribeBridgeSafetyState()}");
+        ShowFromTray();
+        AddActivity("System", "Existing KeyBridge window restored from taskbar launch.");
+    }
+
     private void ExitFromTray()
     {
+        TraceActivity("Trace", $"ExitFromTray requested. {DescribeBridgeSafetyState()}");
         isExitRequested = true;
         Close();
     }
@@ -2954,6 +3463,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void Window_Closed(object? sender, EventArgs e)
     {
+        TraceActivity("Trace", $"Window_Closed begin. {DescribeBridgeSafetyState()}");
         NetworkChange.NetworkAddressChanged -= NetworkChange_NetworkAddressChanged;
 
         var windowHandle = new WindowInteropHelper(this).Handle;
@@ -2977,6 +3487,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         screenshotShareService.Dispose();
         googleDocsClipboardService.Dispose();
         inputHookService.Dispose();
+        TraceActivity("Trace", "Window_Closed end. Services disposed.");
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
