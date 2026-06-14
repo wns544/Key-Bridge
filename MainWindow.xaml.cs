@@ -1723,8 +1723,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static string FormatCodeBlockForSharing(string language, string codeText, bool includeCodeLanguage, bool useBracketCodeBlockMarkers)
     {
-        const string markerStart = "----------";
-        const string markerEnd = "----------";
+        const string markerStart = "——————————";
+        const string markerEnd = "——————————";
         var startLabel = includeCodeLanguage && !string.Equals(language, "text", StringComparison.OrdinalIgnoreCase)
             ? $"{markerStart} {language}"
             : markerStart;
