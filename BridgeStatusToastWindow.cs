@@ -52,6 +52,18 @@ internal sealed class BridgeStatusToastWindow : Window
         closeTimer.Start();
     }
 
+    public void ShowPersistently()
+    {
+        Show();
+        closeTimer.Stop();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        closeTimer.Stop();
+        base.OnClosed(e);
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -65,10 +77,10 @@ internal sealed class BridgeStatusToastWindow : Window
     {
         var resolvedStatusText = statusText ?? (isConnected ? "연결" : "연결 해제");
         var foreground = isConnected
-            ? new SolidColorBrush(MediaColor.FromRgb(25, 42, 58))
+            ? new SolidColorBrush(MediaColor.FromRgb(92, 36, 36))
             : new SolidColorBrush(MediaColor.FromRgb(110, 110, 110));
         var background = isConnected
-            ? new SolidColorBrush(MediaColor.FromRgb(250, 250, 250))
+            ? new SolidColorBrush(MediaColor.FromRgb(255, 214, 214))
             : new SolidColorBrush(MediaColor.FromRgb(236, 236, 236));
 
         var panel = new StackPanel

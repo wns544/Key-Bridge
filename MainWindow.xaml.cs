@@ -158,10 +158,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private CancellationTokenSource? clipboardTypingCancellation;
     private CancellationTokenSource? autoClipboardShareCancellation;
     private CancellationTokenSource? bridgeConnectionToastCancellation;
+    private CancellationTokenSource? bridgeDisconnectToastCancellation;
     private CancellationTokenSource? mouseSendLoopCancellation;
     private byte mouseButtons;
     private Forms.NotifyIcon? trayIcon;
     private BridgeStatusToastWindow? bridgeStatusToast;
+    private BridgeStatusToastWindow? bridgeConnectionStatusToast;
 
     public MainWindow()
     {
@@ -306,6 +308,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             await bridgeService.StopAsync();
         }
         CancelBridgeConnectionFeedback();
+        CancelBridgeDisconnectFeedback();
+        CloseBridgeConnectionStatusToast();
         hasShownBridgeConnectedToast = false;
         hasShownBridgeConnectionFailureToast = false;
 
@@ -1156,6 +1160,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 TraceActivity("Safety", $"iPad HID connected event processing begins. {DescribeBridgeSafetyState()}");
                 CancelBridgeConnectionFeedback();
+                CancelBridgeDisconnectFeedback();
 
                 if (!allowInputCaptureOnConnected)
                 {
@@ -1164,6 +1169,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     TraceActivity("Safety", $"iPad HID reconnected but auto input capture is blocked. {DescribeBridgeSafetyState()}");
                     return;
                 }
+
+                hasShownBridgeConnectedToast = true;
+                hasShownBridgeConnectionFailureToast = false;
+                ShowBridgeConnectionStatusToast("iPad", "iPad", true, "연결");
 
                 if (!hasShownBridgeConnectedToast)
                 {
@@ -1176,6 +1185,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 AddActivity("브릿지", "iPad HID 연결이 확인되었습니다.");
                 TraceActivity("Safety", $"iPad HID connected event processed. {DescribeBridgeSafetyState()}");
                 return;
+            }
+
+            if (hasShownBridgeConnectedToast)
+            {
+                BeginBridgeDisconnectFeedbackWindow();
+                hasShownBridgeConnectedToast = false;
             }
 
             if (hasShownBridgeConnectedToast)
@@ -1315,6 +1330,51 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         bridgeConnectionToastCancellation?.Cancel();
         bridgeConnectionToastCancellation?.Dispose();
         bridgeConnectionToastCancellation = null;
+    }
+
+    private void BeginBridgeDisconnectFeedbackWindow()
+    {
+        CancelBridgeDisconnectFeedback();
+
+        var cancellation = new CancellationTokenSource();
+        bridgeDisconnectToastCancellation = cancellation;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(2500, cancellation.Token);
+                if (cancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (cancellation.IsCancellationRequested
+                        || !bridgeService.IsRunning
+                        || bridgeService.HasKeyboardSubscriber
+                        || bridgeService.HasMouseSubscriber)
+                    {
+                        return;
+                    }
+
+                    hasShownBridgeConnectedToast = false;
+                    CloseBridgeConnectionStatusToast();
+                    ShowBridgeStatusToast("iPad", "iPad", false, "연결 끊김");
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
+    private void CancelBridgeDisconnectFeedback()
+    {
+        bridgeDisconnectToastCancellation?.Cancel();
+        bridgeDisconnectToastCancellation?.Dispose();
+        bridgeDisconnectToastCancellation = null;
     }
 
     private async Task InitializeScreenshotShareAsync()
@@ -1917,6 +1977,96 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return merged;
     }
 
+    private sealed record GoogleDocsFormattedText(string Text, IReadOnlyList<GoogleDocsTextStyleRange> StyleRanges);
+
+    private static GoogleDocsFormattedText AddSpacingAroundNumberedHeadings(string text, IReadOnlyList<GoogleDocsTextStyleRange> styleRanges)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return new GoogleDocsFormattedText(text, styleRanges);
+        }
+
+        var builder = new StringBuilder(text);
+        var adjustedRanges = styleRanges.ToList();
+        var matches = Regex.Matches(text, @"(?m)^\d{1,2}\.\s+\S[^\n]*$")
+            .Cast<Match>()
+            .Reverse()
+            .ToList();
+
+        foreach (var match in matches)
+        {
+            var headingStart = match.Index;
+            var headingEnd = match.Index + match.Length;
+
+            var newlineCountAfter = CountNewlinesAfter(builder, headingEnd);
+            if (headingEnd < builder.Length && newlineCountAfter < 2)
+            {
+                var insertText = newlineCountAfter == 0 ? "\n\n" : "\n";
+                builder.Insert(headingEnd, insertText);
+                adjustedRanges = ShiftStyleRanges(adjustedRanges, headingEnd, insertText.Length);
+            }
+
+            var newlineCountBefore = CountNewlinesBefore(builder, headingStart);
+            if (headingStart > 0 && newlineCountBefore < 2)
+            {
+                var insertText = newlineCountBefore == 0 ? "\n\n" : "\n";
+                builder.Insert(headingStart, insertText);
+                adjustedRanges = ShiftStyleRanges(adjustedRanges, headingStart, insertText.Length);
+            }
+        }
+
+        return new GoogleDocsFormattedText(builder.ToString(), adjustedRanges);
+    }
+
+    private static int CountNewlinesBefore(StringBuilder text, int index)
+    {
+        var count = 0;
+        for (var cursor = index - 1; cursor >= 0 && text[cursor] == '\n'; cursor--)
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private static int CountNewlinesAfter(StringBuilder text, int index)
+    {
+        var count = 0;
+        for (var cursor = index; cursor < text.Length && text[cursor] == '\n'; cursor++)
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    private static List<GoogleDocsTextStyleRange> ShiftStyleRanges(
+        IEnumerable<GoogleDocsTextStyleRange> ranges,
+        int insertIndex,
+        int insertedLength)
+    {
+        return ranges
+            .Select(range =>
+            {
+                if (range.StartIndex >= insertIndex)
+                {
+                    return range with
+                    {
+                        StartIndex = range.StartIndex + insertedLength,
+                        EndIndex = range.EndIndex + insertedLength
+                    };
+                }
+
+                if (range.EndIndex > insertIndex)
+                {
+                    return range with { EndIndex = range.EndIndex + insertedLength };
+                }
+
+                return range;
+            })
+            .ToList();
+    }
+
     private async Task SyncLatestTextToGoogleDocsAsync(string text, bool isAutomatic)
     {
         if (GoogleDocsSyncCheckBox.IsChecked != true || isGoogleDocsSyncInProgress)
@@ -1927,7 +2077,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
             .TrimEnd('\n');
-        if (string.Equals(lastGoogleDocsSyncedText, normalizedText, StringComparison.Ordinal)
+        var styleRanges = TryCreateGoogleDocsBoldRanges(normalizedText, out var boldRanges)
+            ? boldRanges
+            : [];
+        var formattedText = AddSpacingAroundNumberedHeadings(normalizedText, styleRanges);
+        if (string.Equals(lastGoogleDocsSyncedText, formattedText.Text, StringComparison.Ordinal)
             && (DateTime.Now - lastGoogleDocsSyncedAt).TotalMilliseconds < GoogleDocsDuplicateSyncWindowMs)
         {
             AddActivity("GoogleDocs", "Skipped duplicate latest text sync.");
@@ -1937,16 +2091,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         isGoogleDocsSyncInProgress = true;
         try
         {
-            var styleRanges = TryCreateGoogleDocsBoldRanges(normalizedText, out var boldRanges)
-                ? boldRanges
-                : [];
-            await googleDocsClipboardService.ReplaceLatestTextAsync(normalizedText, styleRanges);
-            lastGoogleDocsSyncedText = normalizedText;
+            await googleDocsClipboardService.ReplaceLatestTextAsync(formattedText.Text, formattedText.StyleRanges);
+            lastGoogleDocsSyncedText = formattedText.Text;
             lastGoogleDocsSyncedAt = DateTime.Now;
             GoogleDocsStatusText.Text = "최근 텍스트 동기화됨";
             AddActivity("GoogleDocs", isAutomatic
-                ? $"Auto synced latest text. chars={normalizedText.Length}, boldRanges={styleRanges.Count}"
-                : $"Synced latest text. chars={normalizedText.Length}, boldRanges={styleRanges.Count}");
+                ? $"Auto synced latest text. chars={formattedText.Text.Length}, boldRanges={formattedText.StyleRanges.Count}"
+                : $"Synced latest text. chars={formattedText.Text.Length}, boldRanges={formattedText.StyleRanges.Count}");
         }
         catch (Exception ex)
         {
@@ -3340,6 +3491,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         bridgeStatusToast = new BridgeStatusToastWindow(label, symbol, isConnected, statusText);
         bridgeStatusToast.Closed += (_, _) => bridgeStatusToast = null;
         bridgeStatusToast.ShowBriefly();
+    }
+
+    private void ShowBridgeConnectionStatusToast(string label, string symbol, bool isConnected, string? statusText = null)
+    {
+        CloseBridgeConnectionStatusToast();
+
+        var statusToast = new BridgeStatusToastWindow(label, symbol, isConnected, statusText);
+        bridgeConnectionStatusToast = statusToast;
+        statusToast.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(bridgeConnectionStatusToast, statusToast))
+            {
+                bridgeConnectionStatusToast = null;
+            }
+        };
+        statusToast.ShowPersistently();
+    }
+
+    private void CloseBridgeConnectionStatusToast()
+    {
+        var statusToast = bridgeConnectionStatusToast;
+        bridgeConnectionStatusToast = null;
+        statusToast?.Close();
     }
 
     private void InitializeTrayIcon()
