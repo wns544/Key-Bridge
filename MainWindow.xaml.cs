@@ -115,6 +115,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int MouseMoveThrottleMs = 1;
     private const int MouseSendIntervalMs = 1;
     private const int MouseDragStartSettleMs = 12;
+    private const int MouseDragStartSettleReports = 3;
     private const int MouseDragKeepAliveIntervalMs = 10;
     private const int MouseDragConfirmIntervalMs = 14;
     private const int MouseQueueCoalesceAfter = 2;
@@ -2807,6 +2808,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         lock (mouseStateLock)
         {
+            var isDragStart = buttons != 0 && activeDragButtons == 0 && mouseButtons == 0;
             if (buttons != 0)
             {
                 activeDragButtons = buttons;
@@ -2820,7 +2822,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var queuedButtons = activeDragButtons != 0 ? activeDragButtons : buttons;
             if (forceReport && queuedButtons != 0)
             {
-                EnqueueMouseReport(new QueuedMouseReport(0, 0, queuedButtons, true));
+                var settleReportCount = isDragStart ? MouseDragStartSettleReports : 1;
+                for (var index = 0; index < settleReportCount; index++)
+                {
+                    EnqueueMouseReport(new QueuedMouseReport(0, 0, queuedButtons, true));
+                }
             }
 
             if (deltaX != 0 || deltaY != 0 || !forceReport || queuedButtons == 0)
