@@ -271,6 +271,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             AddActivity("브릿지", "BLE HID 검색을 시작했습니다. iPad에서 먼저 '액세서리'를 선택하세요. 연결 후 이 PC의 블루투스 이름으로 바뀔 수 있습니다.");
             RefreshStatus();
             BeginBridgeConnectionFeedbackWindow();
+            ShowBridgeConnectionStatusIfSubscribed();
         }
         catch (Exception ex)
         {
@@ -1282,6 +1283,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void BridgeService_DiagnosticMessage(object? sender, string message)
     {
         Dispatcher.InvokeAsync(() => AddActivity("HID", message));
+    }
+
+    private void ShowBridgeConnectionStatusIfSubscribed()
+    {
+        if (!bridgeService.IsRunning || (!bridgeService.HasKeyboardSubscriber && !bridgeService.HasMouseSubscriber))
+        {
+            return;
+        }
+
+        CancelBridgeConnectionFeedback();
+        CancelBridgeDisconnectFeedback();
+        hasShownBridgeConnectedToast = true;
+        hasShownBridgeConnectionFailureToast = false;
+        ShowBridgeConnectionStatusToast("iPad", "iPad", true, "연결");
+        AddActivity("브릿지", "iPad HID 연결이 확인되었습니다.");
     }
 
     private void BeginBridgeConnectionFeedbackWindow()
