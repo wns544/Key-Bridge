@@ -672,6 +672,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ResetMouseState();
             inputHookService.SuppressForwardedPointerEvents = isBridgeInputEnabled && bridgeService.IsRunning;
             UpdatePointerCapture();
+            _ = RefreshPointerHoverAsync("mouse signal enabled", reapplyAbsoluteCenter: false);
         }
         else
         {
@@ -1133,7 +1134,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         TraceActivity("Trace", $"MouseSubscriberChanged isConnected={isConnected}. {DescribeBridgeSafetyState()}");
         if (isConnected)
         {
-            Dispatcher.InvokeAsync(async () => await ReapplyAbsolutePointerCenterAsync("mouse connected"));
+            Dispatcher.InvokeAsync(async () => await RefreshPointerHoverAsync("mouse connected", reapplyAbsoluteCenter: true));
         }
     }
 
@@ -1288,20 +1289,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         hasShownBridgeConnectionFailureToast = false;
         ShowBridgeConnectionStatusToast("iPad", "iPad", true, "연결");
         AddActivity("브릿지", "iPad HID 연결이 확인되었습니다.");
-        _ = ReapplyAbsolutePointerCenterAsync("already subscribed");
+        _ = RefreshPointerHoverAsync("already subscribed", reapplyAbsoluteCenter: false);
     }
 
-    private async Task ReapplyAbsolutePointerCenterAsync(string reason)
+    private async Task RefreshPointerHoverAsync(string reason, bool reapplyAbsoluteCenter)
     {
         ResetMouseState();
-        await Task.Delay(700);
-        for (var attempt = 0; attempt < 3 && bridgeService.IsRunning; attempt++)
+        await Task.Delay(250);
+
+        if (reapplyAbsoluteCenter)
         {
-            await bridgeService.SendPointerAsync(activeDevice, 50, 50);
-            await Task.Delay(300);
+            for (var attempt = 0; attempt < 3 && bridgeService.IsRunning; attempt++)
+            {
+                await bridgeService.SendPointerAsync(activeDevice, 50, 50);
+                await Task.Delay(250);
+            }
         }
 
-        AddActivity("Mouse", $"Re-applied absolute center pointer position ({reason}).");
+        for (var attempt = 0; attempt < 3 && ShouldForwardMouseInput(); attempt++)
+        {
+            await bridgeService.SendMouseReportAsync(activeDevice, 1, 0, 0, 0, 0);
+            await Task.Delay(20);
+            await bridgeService.SendMouseReportAsync(activeDevice, -1, 0, 0, 0, 0);
+            await Task.Delay(180);
+        }
+
+        AddActivity("Mouse", $"Refreshed pointer hover state ({reason}).");
     }
 
     private void BeginBridgeConnectionFeedbackWindow()
