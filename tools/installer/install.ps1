@@ -10,7 +10,16 @@ if (-not (Test-Path -LiteralPath $sourceExe)) {
 }
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-Copy-Item -LiteralPath $sourceExe -Destination $targetExe -Force
+Get-ChildItem -LiteralPath $PSScriptRoot -File |
+    Where-Object { $_.Name -notin @("install.cmd", "install.ps1") } |
+    ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $installDir $_.Name) -Force
+    }
+
+Get-ChildItem -LiteralPath $PSScriptRoot -Directory |
+    ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $installDir -Recurse -Force
+    }
 
 $shell = New-Object -ComObject WScript.Shell
 
