@@ -1133,17 +1133,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         TraceActivity("Trace", $"MouseSubscriberChanged isConnected={isConnected}. {DescribeBridgeSafetyState()}");
         if (isConnected)
         {
-            Dispatcher.InvokeAsync(async () =>
-            {
-                ResetMouseState();
-                await Task.Delay(700);
-                for (var attempt = 0; attempt < 3 && bridgeService.IsRunning; attempt++)
-                {
-                    await bridgeService.SendPointerAsync(activeDevice, 50, 50);
-                    await Task.Delay(300);
-                }
-                AddActivity("Mouse", "Mouse connected. Re-applied absolute center pointer position.");
-            });
+            Dispatcher.InvokeAsync(async () => await ReapplyAbsolutePointerCenterAsync("mouse connected"));
         }
     }
 
@@ -1298,6 +1288,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         hasShownBridgeConnectionFailureToast = false;
         ShowBridgeConnectionStatusToast("iPad", "iPad", true, "연결");
         AddActivity("브릿지", "iPad HID 연결이 확인되었습니다.");
+        _ = ReapplyAbsolutePointerCenterAsync("already subscribed");
+    }
+
+    private async Task ReapplyAbsolutePointerCenterAsync(string reason)
+    {
+        ResetMouseState();
+        await Task.Delay(700);
+        for (var attempt = 0; attempt < 3 && bridgeService.IsRunning; attempt++)
+        {
+            await bridgeService.SendPointerAsync(activeDevice, 50, 50);
+            await Task.Delay(300);
+        }
+
+        AddActivity("Mouse", $"Re-applied absolute center pointer position ({reason}).");
     }
 
     private void BeginBridgeConnectionFeedbackWindow()
