@@ -103,4 +103,4 @@ finally {
     $sourceImage.Dispose()
 }
 
-Get-Item $pngOutputPath, $icoOutputPath | Select-Object FullName, Length
+Get-Item $sourcePath, $pngOutputPath, $icoOutputPath | Select-Object FullName, Length

@@ -63,35 +63,55 @@ internal sealed class BridgeStatusToastWindow : Window
 
     private static UIElement CreateContent(string label, string symbol, bool isConnected)
     {
-        var panel = new StackPanel
+        var panel = new Grid
         {
-            MinWidth = 162,
-            Margin = new Thickness(0),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center
+            MinWidth = 238
         };
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        panel.Children.Add(CreateStatusMark(symbol, isConnected));
+        var statusMark = CreateStatusMark(symbol, isConnected);
+        Grid.SetColumn(statusMark, 0);
+        panel.Children.Add(statusMark);
 
-        panel.Children.Add(new TextBlock
+        var copy = new StackPanel
         {
-            Text = $"{label} {(isConnected ? "연결" : "해제")}",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        copy.Children.Add(new TextBlock
+        {
+            Text = label,
             FontFamily = new MediaFontFamily("Segoe UI Variable Text, Segoe UI"),
-            FontSize = 14,
-            FontWeight = FontWeights.Normal,
-            Foreground = new SolidColorBrush(MediaColor.FromRgb(25, 42, 58)),
-            TextAlignment = TextAlignment.Center,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            Margin = new Thickness(18, 0, 18, 20)
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(MediaColor.FromRgb(17, 24, 39))
         });
+        copy.Children.Add(new TextBlock
+        {
+            Text = isConnected ? "연결됨" : "해제됨",
+            FontFamily = new MediaFontFamily("Segoe UI Variable Text, Segoe UI"),
+            FontSize = 12,
+            Foreground = new SolidColorBrush(isConnected
+                ? MediaColor.FromRgb(22, 163, 74)
+                : MediaColor.FromRgb(100, 116, 139)),
+            Margin = new Thickness(0, 2, 0, 0)
+        });
+        Grid.SetColumn(copy, 1);
+        panel.Children.Add(copy);
 
         return new Border
         {
-            Background = new SolidColorBrush(MediaColor.FromRgb(250, 250, 250)),
+            Background = new SolidColorBrush(MediaColor.FromRgb(255, 255, 255)),
+            BorderBrush = new SolidColorBrush(MediaColor.FromRgb(221, 227, 234)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14, 12, 16, 12),
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                BlurRadius = 18,
+                BlurRadius = 14,
                 ShadowDepth = 2,
-                Opacity = 0.18
+                Opacity = 0.12
             },
             Child = panel
         };
@@ -101,11 +121,22 @@ internal sealed class BridgeStatusToastWindow : Window
     {
         var mark = new Grid
         {
-            Width = 96,
-            Height = 45,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            Margin = new Thickness(0, 18, 0, 8)
+            Width = 42,
+            Height = 42,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center
         };
+
+        mark.Children.Add(new Border
+        {
+            Background = new SolidColorBrush(isConnected
+                ? MediaColor.FromRgb(236, 253, 243)
+                : MediaColor.FromRgb(248, 250, 252)),
+            BorderBrush = new SolidColorBrush(isConnected
+                ? MediaColor.FromRgb(187, 247, 208)
+                : MediaColor.FromRgb(221, 227, 234)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(7)
+        });
 
         if (symbol.Equals("Mouse", StringComparison.OrdinalIgnoreCase))
         {
@@ -117,9 +148,9 @@ internal sealed class BridgeStatusToastWindow : Window
             {
                 Text = symbol,
                 FontFamily = new MediaFontFamily("Segoe UI Variable Display, Segoe UI"),
-                FontSize = 30,
+                FontSize = 17,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = MediaBrushes.Black,
+                Foreground = new SolidColorBrush(MediaColor.FromRgb(37, 99, 235)),
                 TextAlignment = TextAlignment.Center,
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
@@ -128,14 +159,14 @@ internal sealed class BridgeStatusToastWindow : Window
 
         if (!isConnected)
         {
-            mark.Children.Add(new System.Windows.Shapes.Line
+            mark.Children.Add(new Line
             {
-                X1 = 18,
-                Y1 = 38,
-                X2 = 78,
-                Y2 = 5,
-                Stroke = MediaBrushes.Black,
-                StrokeThickness = 2.2,
+                X1 = 11,
+                Y1 = 31,
+                X2 = 31,
+                Y2 = 11,
+                Stroke = new SolidColorBrush(MediaColor.FromRgb(17, 24, 39)),
+                StrokeThickness = 2,
                 StrokeStartLineCap = PenLineCap.Round,
                 StrokeEndLineCap = PenLineCap.Round
             });
@@ -148,43 +179,43 @@ internal sealed class BridgeStatusToastWindow : Window
     {
         var icon = new Grid
         {
-            Width = 38,
-            Height = 42,
+            Width = 23,
+            Height = 27,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
 
         icon.Children.Add(new Border
         {
-            Width = 31,
-            Height = 40,
-            CornerRadius = new CornerRadius(15, 15, 13, 13),
-            BorderBrush = MediaBrushes.Black,
-            BorderThickness = new Thickness(2.3),
+            Width = 20,
+            Height = 26,
+            CornerRadius = new CornerRadius(10, 10, 8, 8),
+            BorderBrush = new SolidColorBrush(MediaColor.FromRgb(37, 99, 235)),
+            BorderThickness = new Thickness(1.8),
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         });
 
         icon.Children.Add(new Line
         {
-            X1 = 19,
-            Y1 = 3,
-            X2 = 19,
-            Y2 = 16,
-            Stroke = MediaBrushes.Black,
-            StrokeThickness = 1.8,
+            X1 = 11.5,
+            Y1 = 2,
+            X2 = 11.5,
+            Y2 = 10,
+            Stroke = new SolidColorBrush(MediaColor.FromRgb(37, 99, 235)),
+            StrokeThickness = 1.4,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round
         });
 
         icon.Children.Add(new Ellipse
         {
-            Width = 4,
-            Height = 8,
-            Fill = MediaBrushes.Black,
+            Width = 3,
+            Height = 6,
+            Fill = new SolidColorBrush(MediaColor.FromRgb(37, 99, 235)),
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 7, 0, 0)
+            Margin = new Thickness(0, 5, 0, 0)
         });
 
         return icon;

@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using Drawing = System.Drawing;
@@ -995,10 +996,70 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_StateChanged(object? sender, EventArgs e)
     {
+        UpdateTitleBarWindowState();
+
         if (WindowState == WindowState.Minimized)
         {
             HideToTray();
         }
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximizeRestore();
+            return;
+        }
+
+        if (e.ButtonState != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // DragMove can throw if Windows has already ended the mouse gesture.
+        }
+    }
+
+    private void MinimizeTitleButton_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MaximizeTitleButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleMaximizeRestore();
+    }
+
+    private void CloseTitleButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void ToggleMaximizeRestore()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+        UpdateTitleBarWindowState();
+    }
+
+    private void UpdateTitleBarWindowState()
+    {
+        if (!IsInitialized)
+        {
+            return;
+        }
+
+        MaximizeTitleButton.ToolTip = WindowState == WindowState.Maximized
+            ? "복원"
+            : "최대화";
     }
 
     private void Window_Closing(object? sender, CancelEventArgs e)
