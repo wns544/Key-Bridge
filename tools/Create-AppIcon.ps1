@@ -5,6 +5,95 @@ param(
 )
 
 Add-Type -AssemblyName System.Drawing
+Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+
+public static class IconAlphaTools
+{
+    private static void AddCandidate(
+        int x,
+        int y,
+        int width,
+        int height,
+        int stride,
+        byte threshold,
+        byte[] bytes,
+        bool[] visited,
+        Queue<int> queue)
+    {
+        if (x < 0 || y < 0 || x >= width || y >= height)
+        {
+            return;
+        }
+
+        int index = y * width + x;
+        if (visited[index])
+        {
+            return;
+        }
+
+        visited[index] = true;
+        int offset = y * stride + (x * 4);
+        byte b = bytes[offset];
+        byte g = bytes[offset + 1];
+        byte r = bytes[offset + 2];
+        byte a = bytes[offset + 3];
+
+        if (a > 0 && r >= threshold && g >= threshold && b >= threshold)
+        {
+            queue.Enqueue(index);
+        }
+    }
+
+    public static void RemoveBorderConnectedWhite(Bitmap bitmap, byte threshold)
+    {
+        int width = bitmap.Width;
+        int height = bitmap.Height;
+        Rectangle rect = new Rectangle(0, 0, width, height);
+        BitmapData data = bitmap.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        int stride = data.Stride;
+        int byteCount = Math.Abs(stride) * height;
+        byte[] bytes = new byte[byteCount];
+        Marshal.Copy(data.Scan0, bytes, 0, byteCount);
+
+        bool[] visited = new bool[width * height];
+        Queue<int> queue = new Queue<int>();
+
+        for (int index = 0; index < width; index++)
+        {
+            AddCandidate(index, 0, width, height, stride, threshold, bytes, visited, queue);
+            AddCandidate(index, height - 1, width, height, stride, threshold, bytes, visited, queue);
+        }
+
+        for (int index = 0; index < height; index++)
+        {
+            AddCandidate(0, index, width, height, stride, threshold, bytes, visited, queue);
+            AddCandidate(width - 1, index, width, height, stride, threshold, bytes, visited, queue);
+        }
+
+        while (queue.Count > 0)
+        {
+            int index = queue.Dequeue();
+            int x = index % width;
+            int y = index / width;
+            int offset = y * stride + (x * 4);
+            bytes[offset + 3] = 0;
+
+            AddCandidate(x + 1, y, width, height, stride, threshold, bytes, visited, queue);
+            AddCandidate(x - 1, y, width, height, stride, threshold, bytes, visited, queue);
+            AddCandidate(x, y + 1, width, height, stride, threshold, bytes, visited, queue);
+            AddCandidate(x, y - 1, width, height, stride, threshold, bytes, visited, queue);
+        }
+
+        Marshal.Copy(bytes, 0, data.Scan0, byteCount);
+        bitmap.UnlockBits(data);
+    }
+}
+"@
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $sourcePath = Join-Path $projectRoot $Source
@@ -30,6 +119,8 @@ try {
         finally {
             $graphics.Dispose()
         }
+
+        [IconAlphaTools]::RemoveBorderConnectedWhite($squareBitmap, 238)
 
         $squareBitmap.Save($pngOutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
 
